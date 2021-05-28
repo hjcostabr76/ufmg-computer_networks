@@ -53,6 +53,9 @@ int addrparse(const char *addrstr, const char *portstr, struct sockaddr_storage 
     return -1;
 }
 
+/**
+ * https://youtu.be/DGWlxey644c?t=873
+ */
 void addrtostr(const struct sockaddr *addr, char *str, size_t strsize) {
     
     int version;

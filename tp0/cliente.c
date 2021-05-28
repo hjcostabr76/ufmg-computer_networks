@@ -7,6 +7,8 @@
 #include <inttypes.h>
 #include <arpa/inet.h>
 
+#define BUF_SIZE 1024
+
 /**
  * - Recebe struct ainda a ser preenchida com dados de ipv4 ou ipv6;
  * - O tipo sockaddr_storage eh 'super classe' de sockaddr_in & sockaddr_in6;
@@ -32,6 +34,7 @@ void logexit(const char *msg);
  * ------------------------------------------------
  * 
  * TODO: 2021-05-27 - ADD Descricao
+ * TODO: 2021-05-27 - Resolver todo's
  * 
  * O que fazer:
  * - ler IP do servidor;
@@ -63,11 +66,14 @@ int main(int argc, char **argv) {
 
 		- Struct sockaddr_storage equivale a uma 'super classe';
 		- Permite alocar enderecos tanto ipv4 quanto ipv6;
-		- sockaddr_in / sockaddr_in6
+		- sockaddr_in / sockaddr_in6;
 	*/
 
 	struct sockaddr_storage address;
-	if (0 != parse_address(argv[1], argv[2], &address)) { // Funcao customizada
+	const char *addrStr = argv[1];
+	const char *portStr = argv[2];
+
+	if (parse_address(addrStr, portStr, &address) != 0) { // Funcao customizada
 		explain_and_die(argc, argv);
 	}
     
@@ -79,13 +85,31 @@ int main(int argc, char **argv) {
 		logexit("socket");
 	}
 
-	struct sockaddr *addr = (struct sockaddr *)(&address);
-	if (0 != connect(sock, addr, sizeof(address))) {
-		logexit("connect");
+	/*
+		Cria conexao no enderenco (IP + Porta) do socket
+		- Struct sockaddr equivale a uma 'interface' implementada por sockaddr_in / sockaddr_in6;
+	*/
+
+	struct sockaddr *_address = (struct sockaddr *)(&address);
+	if (0 != connect(sock, _address, sizeof(address))) {
+		logexit("Failure as connecting to server");
 	}
 
+	int ipVersion = address.ss_family == AF_INET ? 4 : 6;
+	printf("Connected to address IPv%d %s %hu", ipVersion, addrStr, portStr);
 
     /*== Enviar tamanho da string ======================= */
+
+	// Envia pro servidor a mensagem recebida via terminal
+	const char *msg = argv[3];
+	char msgLengthStr[10];
+	snprintf(msgLengthStr, 10, "%d", strlen(msg));
+
+	size_t sentBytes = send(sock, msgLengthStr, strlen(msgLengthStr)+1, 0); // Retorna qtd de bytes transmitidos (3o argumento serve para parametrizar o envio)
+	if (sentBytes != strlen(msgLengthStr)+1) {
+		logexit("Failure as sending msg length");
+	}
+
     /*== Enviar string cifrada ===========================*/
     /*== Enviar indice da cifra ========================= */
     /*== Aguardar resposta (string desencriptografada) == */
@@ -96,35 +120,17 @@ int main(int argc, char **argv) {
 	 * TODO: 2021-05-27 - Continuar daqui...
 	 */
 
-	// Exibe endereco no qual o socket se conectou
-	// char addrstr[BUFSZ];
-	// addrtostr(addr, addrstr, BUFSZ);
-
-	// printf("connected to %s\n", addrstr);
-
-	// // Envia pro servidor a mensagem recebida via terminal
-	// char buf[BUFSZ];
-	// memset(buf, 0, BUFSZ); // Inicializar buffer com 0 (acho que essa funcao preenche a memoria com o valor definido)
-	
-	// printf("mensagem> ");
-	// fgets(buf, BUFSZ-1, stdin);
-	
-	// size_t count = send(sock, buf, strlen(buf)+1, 0); // Retorna qtd de bytes transmitidos (3o argumento serve para parametrizar o envio)
-	// if (count != strlen(buf)+1) {
-	// 	logexit("send");
-	// }
-
 	// // Recebe dados do servidor
-	// memset(buf, 0, BUFSZ);
+	// memset(buf, 0, BUF_SIZE);
 	// unsigned total = 0;
 
 	// while (1) {
-	// 	count = recv(sock, buf + total, BUFSZ - total, 0);
-	// 	if (count == 0) {
+	// 	sentBytes = recv(sock, buf + total, BUF_SIZE - total, 0);
+	// 	if (sentBytes == 0) {
 	// 		// Connection terminated.
 	// 		break;
 	// 	}
-	// 	total += count;
+	// 	total += sentBytes;
 	// }
 
 	// close(sock);
@@ -174,7 +180,7 @@ int parse_address(const char *addr_number_str, const char *port_str, struct sock
 			- Atribuicao simples nao funciona aqui do mesmo jeito que para o ipv4;
 			- Para o ipv4 o numero de endereco eh um numero (32b);
 			- Para o ipv6 o numero de endereco eh um vetor (128b);
-			- Como nao existe atribuicao de vetor, eh necessario fazer a copia direta de memoria;
+			- Como NAO existe atribuicao de vetor, eh necessario fazer a copia direta de memoria;
 		*/
 
         // addr6->sin6_addr = addr_number6
@@ -186,7 +192,10 @@ int parse_address(const char *addr_number_str, const char *port_str, struct sock
     return -1;
 }
 
-
+/**
+ * TODO: 2021-05-27 - Implementar
+ * TODO: 2021-05-27 - Renomear essa funcao
+ */
 void logexit(const char *msg) {
 	perror(msg);
 	exit(EXIT_FAILURE);
@@ -200,4 +209,32 @@ void explain_and_die(int argc, char **argv) {
     // printf("usage: %s <v4|v6> <server port>\n", argv[0]);
     // printf("example: %s v4 51511\n", argv[0]);
     exit(EXIT_FAILURE);
+}
+
+
+/**
+ * NOTE: Aparentemente nao vamos precisar usar isso pra nada...
+ */
+int get_ip_version(const char *addr_str) {
+    
+    // Valida parametros
+    if (addr_str == NULL) {
+        return -1;
+    }
+
+    // Trata ipv4
+    struct in_addr addr_number4;
+	int is_ipv4 = inet_pton(AF_INET, addr_str, &addr_number4);
+    if (is_ipv4) {
+        return 4;
+    }
+
+    // Trata ipv6
+    struct in6_addr addr_number6;
+	int is_ipv6 = inet_pton(AF_INET6, addr_str, &addr_number6);
+    if (is_ipv6) {
+		return 6;
+    }
+
+    return -1;
 }
