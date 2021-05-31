@@ -6,8 +6,17 @@
 #include <sys/types.h>
 #include <inttypes.h>
 #include <arpa/inet.h>
+#include <math.h>
 
 #define BUF_SIZE 1024
+#define ASCII_LC_LETTER_LAST 122
+#define ASCII_LC_LETTER_FIRST 97
+
+/**
+ * TODO: 2021-05-31 - ADD Descricao
+ * TODO: 2021-05-31 - Implementar
+ */
+int validateInput(int argc, char **argv);
 
 /**
  * - Recebe struct ainda a ser preenchida com dados de ipv4 ou ipv6;
@@ -23,10 +32,18 @@
  * @param portstr: String com numero da porta;
  * @param addr: Struct generica a ser preenchida com dados de conexao ipv4 OU ipv6;
  */
-int parse_address(const char *addrstr, const char *portstr, struct sockaddr_storage *storage);
+int parseAddress(const char *addrstr, const char *portstr, struct sockaddr_storage *storage);
 
-void explain_and_die(int argc, char **argv);
-void logexit(const char *msg);
+/**
+ * TODO: 2021-05-31 - ADD Descricao
+ */
+void caesarCipher(const char *originalText, char **cipheredText, int key);
+
+/**
+ * TODO: 2021-05-31 - ADD Descricao
+ */
+void explainAndDie(int argc, char **argv);
+void logExit(const char *msg);
 
 /**
  * ------------------------------------------------
@@ -56,9 +73,11 @@ int main(int argc, char **argv) {
     /*== Ler porta do servidor ========================== */
     /*== Ler string NAO criptografada =================== */
     /*== Ler indice da cifra de cezar =================== */
-    
-    if (argc != 5) {
-        explain_and_die(argc, argv);
+
+	// Validar entrada
+	if (!validateInput(argc, argv)) {
+    // if (argc != 5) {
+        explainAndDie(argc, argv);
     }
 
 	/*
@@ -100,17 +119,34 @@ int main(int argc, char **argv) {
 
     /*== Enviar tamanho da string ======================= */
 
-	// Envia pro servidor a mensagem recebida via terminal
 	const char *msg = argv[3];
-	char msgLengthStr[10];
-	snprintf(msgLengthStr, 10, "%d", strlen(msg));
+	const int msgLength = strlen(msg);
 
-	size_t sentBytes = send(sock, msgLengthStr, strlen(msgLengthStr)+1, 0); // Retorna qtd de bytes transmitidos (3o argumento serve para parametrizar o envio)
-	if (sentBytes != strlen(msgLengthStr)+1) {
+	char msgLengthStr[10];
+	memset(msgLengthStr, 0, 10); // Inicializar buffer com 0
+	snprintf(msgLengthStr, 10, "%d", msgLength);
+
+	int bytesToSend = strlen(msgLengthStr) + 1;
+	size_t sentBytes = send(sock, msgLengthStr, bytesToSend, 0); // Retorna qtd de bytes transmitidos (3o argumento serve para parametrizar o envio)
+
+	if (sentBytes != bytesToSend) {
 		logexit("Failure as sending msg length");
 	}
 
     /*== Enviar string cifrada ===========================*/
+
+	const int cipherKey = argv[4];
+	const char cipheredMsg[msgLength];
+	memset(cipheredMsg, 0, msgLength); // Inicializar buffer com 0
+	caesarCipher(msg, &cipheredMsg, cipherKey);
+
+	bytesToSend = msgLength + 1;
+	sentBytes = send(sock, cipheredMsg, bytesToSend, 0); // Retorna qtd de bytes transmitidos (3o argumento serve para parametrizar o envio)
+
+	if (sentBytes != bytesToSend) {
+		logexit("Failure as sending message");
+	}
+
     /*== Enviar indice da cifra ========================= */
     /*== Aguardar resposta (string desencriptografada) == */
     /*== Imprimir resposta ============================== */
@@ -139,7 +175,7 @@ int main(int argc, char **argv) {
 	// puts(buf);
 }
 
-int parse_address(const char *addr_number_str, const char *port_str, struct sockaddr_storage *addr) {
+int parseAddress(const char *addr_number_str, const char *port_str, struct sockaddr_storage *addr) {
     
     // Valida parametros
     if (addr_number_str == NULL || port_str == NULL) {
@@ -196,7 +232,7 @@ int parse_address(const char *addr_number_str, const char *port_str, struct sock
  * TODO: 2021-05-27 - Implementar
  * TODO: 2021-05-27 - Renomear essa funcao
  */
-void logexit(const char *msg) {
+void logErrorAndDie(const char *msg) {
 	perror(msg);
 	exit(EXIT_FAILURE);
 }
@@ -205,12 +241,28 @@ void logexit(const char *msg) {
  * TODO: 2021-05-27 - Implementar
  * TODO: 2021-05-27 - Renomear essa funcao
  */
-void explain_and_die(int argc, char **argv) {
+void explainAndDie(int argc, char **argv) {
     // printf("usage: %s <v4|v6> <server port>\n", argv[0]);
     // printf("example: %s v4 51511\n", argv[0]);
     exit(EXIT_FAILURE);
 }
 
+/**
+ * TODO: 2021-05-31 - ADD Descricao
+ */
+void caesarCipher(const char *originalText, char **cipheredText, int key) {
+
+	const int limit = ASCII_LC_LETTER_LAST - ASCII_LC_LETTER_FIRST;
+
+	for (int i = 0; i < strlen(originalText); i++) {
+		const currentCharCode = (int)originalText[i];
+		const int aux = currentCharCode + key;
+		const int page = floor(aux / limit);
+		const char cipheredCharCode = aux - (page * limit);
+		const char cipheredChar = (char)cipheredCharCode;
+		cipheredText[i] = cipheredChar;
+	}
+}
 
 /**
  * NOTE: Aparentemente nao vamos precisar usar isso pra nada...
