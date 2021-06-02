@@ -8,9 +8,12 @@
 #include <arpa/inet.h>
 #include <math.h>
 
-#define BUF_SIZE 1024
+#define SIZE_BUFFER 1024
+#define SIZE_NUMBER_STR 10
+
 #define ASCII_LC_LETTER_LAST 122
 #define ASCII_LC_LETTER_FIRST 97
+
 
 /**
  * TODO: 2021-05-31 - ADD Descricao
@@ -32,7 +35,7 @@ int validateInput(int argc, char **argv);
  * @param portstr: String com numero da porta;
  * @param addr: Struct generica a ser preenchida com dados de conexao ipv4 OU ipv6;
  */
-int parseAddress(const char *addrstr, const char *portstr, struct sockaddr_storage *storage);
+int parseAddress(const char *addrstr, const char *portstr, struct sockaddr_storage *addr);
 
 /**
  * TODO: 2021-05-31 - ADD Descricao
@@ -43,7 +46,7 @@ void caesarCipher(const char *originalText, char **cipheredText, int key);
  * TODO: 2021-05-31 - ADD Descricao
  */
 void explainAndDie(int argc, char **argv);
-void logExit(const char *msg);
+void logErrorAndDie(const char *msg);
 
 /**
  * ------------------------------------------------
@@ -101,7 +104,7 @@ int main(int argc, char **argv) {
 	// Cria & conecta socket
 	int sock = socket(address.ss_family, SOCK_STREAM, 0); // socket tcp (existem outros tipos)
 	if (sock == -1) {
-		logexit("socket");
+		logErrorAndDie("socket");
 	}
 
 	/*
@@ -111,7 +114,7 @@ int main(int argc, char **argv) {
 
 	struct sockaddr *_address = (struct sockaddr *)(&address);
 	if (0 != connect(sock, _address, sizeof(address))) {
-		logexit("Failure as connecting to server");
+		logErrorAndDie("Failure as connecting to server");
 	}
 
 	int ipVersion = address.ss_family == AF_INET ? 4 : 6;
@@ -122,15 +125,15 @@ int main(int argc, char **argv) {
 	const char *msg = argv[3];
 	const int msgLength = strlen(msg);
 
-	char msgLengthStr[10];
-	memset(msgLengthStr, 0, 10); // Inicializar buffer com 0
-	snprintf(msgLengthStr, 10, "%d", msgLength);
+	char msgLengthStr[SIZE_NUMBER_STR];
+	memset(msgLengthStr, 0, SIZE_NUMBER_STR); // Inicializar buffer com 0
+	snprintf(msgLengthStr, SIZE_NUMBER_STR, "%d", msgLength);
 
 	int bytesToSend = strlen(msgLengthStr) + 1;
 	size_t sentBytes = send(sock, msgLengthStr, bytesToSend, 0); // Retorna qtd de bytes transmitidos (3o argumento serve para parametrizar o envio)
 
 	if (sentBytes != bytesToSend) {
-		logexit("Failure as sending msg length");
+		logErrorAndDie("Failure as sending msg length");
 	}
 
     /*== Enviar string cifrada ===========================*/
@@ -144,66 +147,76 @@ int main(int argc, char **argv) {
 	sentBytes = send(sock, cipheredMsg, bytesToSend, 0); // Retorna qtd de bytes transmitidos (3o argumento serve para parametrizar o envio)
 
 	if (sentBytes != bytesToSend) {
-		logexit("Failure as sending message");
+		logErrorAndDie("Failure as sending message");
 	}
 
-    /*== Enviar indice da cifra ========================= */
+    /*== Enviar chave da cifra ========================== */
+
+	char cipherKeyStr[SIZE_NUMBER_STR];
+	memset(cipherKeyStr, 0, SIZE_NUMBER_STR);
+	snprintf(cipherKeyStr, SIZE_NUMBER_STR, "%d", cipherKey);
+
+	bytesToSend = strlen(cipherKeyStr) + 1;
+	sentBytes = send(sock, cipherKeyStr, bytesToSend, 0); // Retorna qtd de bytes transmitidos (3o argumento serve para parametrizar o envio)
+
+	if (sentBytes != bytesToSend) {
+		logErrorAndDie("Failure as sending cipher key");
+	}
+
     /*== Aguardar resposta (string desencriptografada) == */
-    /*== Imprimir resposta ============================== */
+	
+	char answer[SIZE_BUFFER];
+	memset(answer, 0, SIZE_BUFFER); // Inicializar buffer com 0
+	
+	unsigned receivedBytesAcc = 0;
+	while (1) {
+		const int receivedBytes = recv(sock, answer, SIZE_BUFFER - receivedBytesAcc, 0);
+		if (receivedBytes == 0) { // Connection terminated
+			break;
+		}
+		receivedBytesAcc += receivedBytes;
+	}
+
     /*== Fechar conexao com o servidor ================== */
 
-	/**
-	 * TODO: 2021-05-27 - Continuar daqui...
-	 */
+	close(sock);
 
-	// // Recebe dados do servidor
-	// memset(buf, 0, BUF_SIZE);
-	// unsigned total = 0;
-
-	// while (1) {
-	// 	sentBytes = recv(sock, buf + total, BUF_SIZE - total, 0);
-	// 	if (sentBytes == 0) {
-	// 		// Connection terminated.
-	// 		break;
-	// 	}
-	// 	total += sentBytes;
-	// }
-
-	// close(sock);
-
-	// printf("received %u bytes\n", total);
-	// puts(buf);
+    /*== Imprimir resposta ============================== */
+	
+	printf("Received %u bytes\n", receivedBytesAcc);
+	puts(answer);
+	exit(EXIT_SUCCESS);
 }
 
-int parseAddress(const char *addr_number_str, const char *port_str, struct sockaddr_storage *addr) {
+int parseAddress(const char *addrStr, const char *portstr, struct sockaddr_storage *addr) {
     
     // Valida parametros
-    if (addr_number_str == NULL || port_str == NULL) {
+    if (addrStr == NULL || portstr == NULL) {
         return -1;
     }
 
     // Converte string da porta para numero da porta (em network byte order)
-    uint16_t port = (uint16_t)atoi(port_str); // unsigned short
+    uint16_t port = (uint16_t)atoi(portstr); // unsigned short
     if (port == 0) {
         return -1;
     }
     port = htons(port); // host to network short
 
     // Trata ipv4
-    struct in_addr addr_number4;
-	int is_ipv4 = inet_pton(AF_INET, addr_number_str, &addr_number4);
+    struct in_addr addrNumber4;
+	int is_ipv4 = inet_pton(AF_INET, addrStr, &addrNumber4);
 
     if (is_ipv4) {
         struct sockaddr_in *addr4 = (struct sockaddr_in *)addr;
         addr4->sin_family = AF_INET;
         addr4->sin_port = port;
-        addr4->sin_addr = addr_number4;
+        addr4->sin_addr = addrNumber4;
         return 0;
     }
 
     // Trata ipv6
-    struct in6_addr addr_number6;
-	int is_ipv6 = inet_pton(AF_INET6, addr_number_str, &addr_number6);
+    struct in6_addr addrNumber6;
+	int is_ipv6 = inet_pton(AF_INET6, addrStr, &addrNumber6);
 
     if (is_ipv6) {
         
@@ -220,7 +233,7 @@ int parseAddress(const char *addr_number_str, const char *port_str, struct socka
 		*/
 
         // addr6->sin6_addr = addr_number6
-        memcpy(&(addr6->sin6_addr), &addr_number6, sizeof(addr_number6));
+        memcpy(&(addr6->sin6_addr), &addrNumber6, sizeof(addrNumber6));
         
 		return 0;
     }
@@ -262,31 +275,4 @@ void caesarCipher(const char *originalText, char **cipheredText, int key) {
 		const char cipheredChar = (char)cipheredCharCode;
 		cipheredText[i] = cipheredChar;
 	}
-}
-
-/**
- * NOTE: Aparentemente nao vamos precisar usar isso pra nada...
- */
-int get_ip_version(const char *addr_str) {
-    
-    // Valida parametros
-    if (addr_str == NULL) {
-        return -1;
-    }
-
-    // Trata ipv4
-    struct in_addr addr_number4;
-	int is_ipv4 = inet_pton(AF_INET, addr_str, &addr_number4);
-    if (is_ipv4) {
-        return 4;
-    }
-
-    // Trata ipv6
-    struct in6_addr addr_number6;
-	int is_ipv6 = inet_pton(AF_INET6, addr_str, &addr_number6);
-    if (is_ipv6) {
-		return 6;
-    }
-
-    return -1;
 }
