@@ -11,15 +11,14 @@
 #define SIZE_BUFFER 1024
 #define SIZE_NUMBER_STR 10
 
+#define ASCII_NUMBER_FIRST 48
+#define ASCII_NUMBER_LAST 57
 #define ASCII_LC_LETTER_LAST 122
 #define ASCII_LC_LETTER_FIRST 97
 
+#define DEBUG_ENABLE 1
+#define DEBUG_TXT_LENGTH 150
 
-/**
- * TODO: 2021-05-31 - ADD Descricao
- * TODO: 2021-05-31 - Implementar
- */
-int validateInput(int argc, char **argv);
 
 /**
  * - Recebe struct ainda a ser preenchida com dados de ipv4 ou ipv6;
@@ -40,13 +39,37 @@ int parseAddress(const char *addrstr, const char *portstr, struct sockaddr_stora
 /**
  * TODO: 2021-05-31 - ADD Descricao
  */
-void caesarCipher(const char *originalText, char **cipheredText, int key);
+void caesarCipher(const char *text, const int textLength, char *cipheredText, int key);
 
 /**
  * TODO: 2021-05-31 - ADD Descricao
  */
-void explainAndDie(int argc, char **argv);
+void explainAndDie(char **argv);
+
+/**
+ * TODO: 2021-05-31 - ADD Descricao
+ */
 void logErrorAndDie(const char *msg);
+
+/**
+ * TODO: 2021-05-31 - ADD Descricao
+ */
+void debugStep(const char *text);
+
+/**
+ * TODO: 2021-05-31 - ADD Descricao
+ */
+int validateInput(int argc, char **argv);
+
+/**
+ * TODO: 2021-05-31 - ADD Descricao
+ */
+int validateLowerCaseString(const char *string, const int strLength);
+
+/**
+ * TODO: 2021-05-31 - ADD Descricao
+ */
+int validateNumericString(const char *string, const int strLength);
 
 /**
  * ------------------------------------------------
@@ -72,16 +95,18 @@ void logErrorAndDie(const char *msg);
  */
 int main(int argc, char **argv) {
 
-    /*== Ler IP do servidor ============================= */
-    /*== Ler porta do servidor ========================== */
-    /*== Ler string NAO criptografada =================== */
-    /*== Ler indice da cifra de cezar =================== */
+	const int debugTextLength = DEBUG_ENABLE ? DEBUG_TXT_LENGTH : 0;
+	char debugTxt[debugTextLength];
+	debugStep("Starting...\n");
 
-	// Validar entrada
-	if (!validateInput(argc, argv)) {
-    // if (argc != 5) {
-        explainAndDie(argc, argv);
+    /*=================================================== */
+    /*-- Validar entrada -------------------------------- */
+
+	debugStep("Validating input...\n");
+    if (!validateInput(argc, argv)) {
+        explainAndDie(argv);
     }
+	debugStep("\tInput is valid!\n");
 
 	/*
 		Define endereco do socket (ipv4 OU ipv6):
@@ -91,41 +116,49 @@ int main(int argc, char **argv) {
 		- sockaddr_in / sockaddr_in6;
 	*/
 
+	debugStep("Parsing address...\n");
 	struct sockaddr_storage address;
 	const char *addrStr = argv[1];
 	const char *portStr = argv[2];
-
-	if (parse_address(addrStr, portStr, &address) != 0) { // Funcao customizada
-		explain_and_die(argc, argv);
+	if (parseAddress(addrStr, portStr, &address) != 0) { // Funcao customizada
+		explainAndDie(argv);
 	}
+	debugStep("\tAddress is fine!\n");
     
-    /*== Conectar com servidor ========================== */
+	/*=================================================== */
+    /*-- Conectar com servidor -------------------------- */
 
-	// Cria & conecta socket
+	debugStep("Creating socket...\n");
 	int sock = socket(address.ss_family, SOCK_STREAM, 0); // socket tcp (existem outros tipos)
 	if (sock == -1) {
 		logErrorAndDie("socket");
 	}
+	debugStep("\tSocket successfully creating...\n");
 
 	/*
 		Cria conexao no enderenco (IP + Porta) do socket
 		- Struct sockaddr equivale a uma 'interface' implementada por sockaddr_in / sockaddr_in6;
 	*/
 
+	debugStep("Creating connection...\n");
 	struct sockaddr *_address = (struct sockaddr *)(&address);
 	if (0 != connect(sock, _address, sizeof(address))) {
 		logErrorAndDie("Failure as connecting to server");
 	}
-
 	int ipVersion = address.ss_family == AF_INET ? 4 : 6;
-	printf("Connected to address IPv%d %s %hu", ipVersion, addrStr, portStr);
+	sprintf(debugTxt, "Connected to address IPv%d %s %s", ipVersion, addrStr, portStr);
+	debugStep(debugTxt);
 
-    /*== Enviar tamanho da string ======================= */
+	/*=================================================== */
+    /*-- Enviar tamanho da string ----------------------- */
 
+	debugStep("Sending message length...\n");
+	
 	const char *msg = argv[3];
 	const int msgLength = strlen(msg);
-
+	printf("msg: %d / %s\n", msgLength, msg);
 	char msgLengthStr[SIZE_NUMBER_STR];
+	
 	memset(msgLengthStr, 0, SIZE_NUMBER_STR); // Inicializar buffer com 0
 	snprintf(msgLengthStr, SIZE_NUMBER_STR, "%d", msgLength);
 
@@ -136,12 +169,20 @@ int main(int argc, char **argv) {
 		logErrorAndDie("Failure as sending msg length");
 	}
 
-    /*== Enviar string cifrada ===========================*/
+	debugStep("\tMessage length sent...\n");
 
-	const int cipherKey = argv[4];
-	const char cipheredMsg[msgLength];
+	/*=================================================== */
+    /*-- Enviar string cifrada -------------------------- */
+
+	debugStep("Sending message...\n");
+	const char *cipherKeyStr = argv[4];
+	const int cipherKey = atoi(cipherKeyStr);
+	char cipheredMsg[msgLength];
 	memset(cipheredMsg, 0, msgLength); // Inicializar buffer com 0
-	caesarCipher(msg, &cipheredMsg, cipherKey);
+	printf("\nchico: %d / %s\n", (int)strlen(cipheredMsg), cipheredMsg);
+	caesarCipher(msg, msgLength, cipheredMsg, cipherKey);
+
+	printf("ciphered: %s\n", cipheredMsg);
 
 	bytesToSend = msgLength + 1;
 	sentBytes = send(sock, cipheredMsg, bytesToSend, 0); // Retorna qtd de bytes transmitidos (3o argumento serve para parametrizar o envio)
@@ -149,12 +190,13 @@ int main(int argc, char **argv) {
 	if (sentBytes != bytesToSend) {
 		logErrorAndDie("Failure as sending message");
 	}
+	
+	debugStep("\tMessage sent...\n");
 
-    /*== Enviar chave da cifra ========================== */
+    /*=================================================== */
+    /*-- Enviar chave da cifra -------------------------- */
 
-	char cipherKeyStr[SIZE_NUMBER_STR];
-	memset(cipherKeyStr, 0, SIZE_NUMBER_STR);
-	snprintf(cipherKeyStr, SIZE_NUMBER_STR, "%d", cipherKey);
+	debugStep("Sending encryption key...\n");
 
 	bytesToSend = strlen(cipherKeyStr) + 1;
 	sentBytes = send(sock, cipherKeyStr, bytesToSend, 0); // Retorna qtd de bytes transmitidos (3o argumento serve para parametrizar o envio)
@@ -163,28 +205,43 @@ int main(int argc, char **argv) {
 		logErrorAndDie("Failure as sending cipher key");
 	}
 
-    /*== Aguardar resposta (string desencriptografada) == */
+	debugStep("\tEncryption key sent...\n");
+
+	/*=================================================== */
+    /*-- Aguardar resposta (string desencriptografada) -- */
+
+	debugStep("Waiting server answer...\n");
 	
 	char answer[SIZE_BUFFER];
 	memset(answer, 0, SIZE_BUFFER); // Inicializar buffer com 0
 	
 	unsigned receivedBytesAcc = 0;
 	while (1) {
+		
 		const int receivedBytes = recv(sock, answer, SIZE_BUFFER - receivedBytesAcc, 0);
 		if (receivedBytes == 0) { // Connection terminated
 			break;
 		}
+
 		receivedBytesAcc += receivedBytes;
+		debugStep("\treceiving data from server...");
 	}
 
-    /*== Fechar conexao com o servidor ================== */
+	sprintf(debugTxt, "\tReceived %u bytes!\n", receivedBytesAcc);
+	debugStep(debugTxt);
 
+	/*=================================================== */
+    /*-- Fechar conexao com o servidor ------------------ */
+
+	debugStep("Closing socket...");
 	close(sock);
+	debugStep("\tSocket closed.");
 
-    /*== Imprimir resposta ============================== */
-	
-	printf("Received %u bytes\n", receivedBytesAcc);
+	/*=================================================== */
+    /*-- Imprimir resposta ------------------------------ */
+
 	puts(answer);
+	debugStep("\n-- END --\n");
 	exit(EXIT_SUCCESS);
 }
 
@@ -254,25 +311,94 @@ void logErrorAndDie(const char *msg) {
  * TODO: 2021-05-27 - Implementar
  * TODO: 2021-05-27 - Renomear essa funcao
  */
-void explainAndDie(int argc, char **argv) {
-    // printf("usage: %s <v4|v6> <server port>\n", argv[0]);
-    // printf("example: %s v4 51511\n", argv[0]);
+void explainAndDie(char **argv) {
+    printf("Invalid Input\n");
+    printf("Usage: %s <server IP> <server port> <text> <encryption key number>\n", argv[0]);
+    printf("\nOnly lowercase with no spaces strings are accepted as text.\n");
+	printf("Example: %s 127.0.0.1 5000 lorenipsumdolur 4\n", argv[0]);
     exit(EXIT_FAILURE);
 }
 
 /**
  * TODO: 2021-05-31 - ADD Descricao
  */
-void caesarCipher(const char *originalText, char **cipheredText, int key) {
+void caesarCipher(const char *text, const int textLength, char *cipheredText, int key) {
 
-	const int limit = ASCII_LC_LETTER_LAST - ASCII_LC_LETTER_FIRST;
+	const int range = ASCII_LC_LETTER_LAST - ASCII_LC_LETTER_FIRST;
 
-	for (int i = 0; i < strlen(originalText); i++) {
-		const currentCharCode = (int)originalText[i];
-		const int aux = currentCharCode + key;
-		const int page = floor(aux / limit);
-		const char cipheredCharCode = aux - (page * limit);
-		const char cipheredChar = (char)cipheredCharCode;
-		cipheredText[i] = cipheredChar;
+	for (int i = 0; i < textLength; i++) {
+
+		const int currentCharCode = (int)text[i];
+		int cipheredCharCode = currentCharCode + key;
+		
+		while (cipheredCharCode > ASCII_LC_LETTER_LAST) {
+			cipheredCharCode -= (range + 1);
+		}
+		
+		cipheredText[i] = (char)cipheredCharCode;
 	}
+
+	cipheredText[textLength] = '\0';
+	printf("\n3: %d %s\n", (int)strlen(cipheredText), cipheredText);
+}
+
+
+void debugStep(const char *text) {
+	if (DEBUG_ENABLE) {
+		puts(text);
+	}
+}
+
+int validateInput(int argc, char **argv) {
+
+	// if (argc != 5) {
+	if (argc != 3) {
+        debugStep("ERROR: Invalid argc!");
+		return 0;
+    }
+
+	// const char *addrStr = argv[1];
+
+	const char *portStr = argv[2];
+	if (!validateNumericString(portStr, strlen(portStr))) {
+		debugStep("ERROR: Invalid Port!");
+		return 0;
+	}
+
+	const char *msg = argv[3];
+	if (!validateLowerCaseString(msg, strlen(msg))) {
+		debugStep("ERROR: Invalid Text!");
+		return 0;
+	}
+
+	const char *cipherKeyStr = argv[4];
+	if (!validateNumericString(cipherKeyStr, strlen(cipherKeyStr))) {
+		debugStep("ERROR: Invalid Cipher Key!");
+		return 0;
+	}
+
+	return 1;
+}
+
+int validateNumericString(const char *string, const int strLength) {
+
+	for (int i; i < strLength; i++) {
+		if ((int)string[i] < ASCII_NUMBER_FIRST || (int)string[i] > ASCII_NUMBER_LAST) {
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
+
+int validateLowerCaseString(const char *string, const int strLength) {
+
+	for (int i; i < strLength; i++) {
+		if ((int)string[i] < ASCII_LC_LETTER_FIRST || (int)string[i] > ASCII_LC_LETTER_LAST) {
+			return 0;
+		}
+	}
+
+	return 1;
 }
