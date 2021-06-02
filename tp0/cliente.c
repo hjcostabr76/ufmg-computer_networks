@@ -79,19 +79,6 @@ int validateNumericString(const char *string, const int strLength);
  * TODO: 2021-05-27 - ADD Descricao
  * TODO: 2021-05-27 - Resolver todo's
  * 
- * O que fazer:
- * - ler IP do servidor;
- * - ler porta do servidor;
- * - ler string NAO criptografada;
- * - ler indice da cifra de cezar;
- * - Conectar com servidor;
- * - Enviar tamanho da string;
- * - Enviar string cifrada;
- * - Enviar indice da cifra;
- * - Aguardar resposta (string desencriptografada);
- * - imprimir resposta;
- * - fechar conexao com o servidor
- * 
  */
 int main(int argc, char **argv) {
 
@@ -120,7 +107,7 @@ int main(int argc, char **argv) {
 	struct sockaddr_storage address;
 	const char *addrStr = argv[1];
 	const char *portStr = argv[2];
-	if (parseAddress(addrStr, portStr, &address) != 0) { // Funcao customizada
+	if (!parseAddress(addrStr, portStr, &address)) { // Funcao customizada
 		explainAndDie(argv);
 	}
 	debugStep("\tAddress is fine!\n");
@@ -218,7 +205,7 @@ int main(int argc, char **argv) {
 	unsigned receivedBytesAcc = 0;
 	while (1) {
 		
-		const int receivedBytes = recv(sock, answer, SIZE_BUFFER - receivedBytesAcc, 0);
+		size_t receivedBytes = recv(sock, answer + receivedBytesAcc, SIZE_BUFFER - receivedBytesAcc, 0);
 		if (receivedBytes == 0) { // Connection terminated
 			break;
 		}
@@ -245,72 +232,43 @@ int main(int argc, char **argv) {
 	exit(EXIT_SUCCESS);
 }
 
+/**
+ * NOTE: Soh trata ipv4
+ */
 int parseAddress(const char *addrStr, const char *portstr, struct sockaddr_storage *addr) {
     
     // Valida parametros
     if (addrStr == NULL || portstr == NULL) {
-        return -1;
+        return 0;
     }
 
     // Converte string da porta para numero da porta (em network byte order)
     uint16_t port = (uint16_t)atoi(portstr); // unsigned short
     if (port == 0) {
-        return -1;
+        return 0;
     }
     port = htons(port); // host to network short
 
     // Trata ipv4
     struct in_addr addrNumber4;
 	int is_ipv4 = inet_pton(AF_INET, addrStr, &addrNumber4);
+	if (!is_ipv4) {
+		return 0
+	}
 
-    if (is_ipv4) {
-        struct sockaddr_in *addr4 = (struct sockaddr_in *)addr;
-        addr4->sin_family = AF_INET;
-        addr4->sin_port = port;
-        addr4->sin_addr = addrNumber4;
-        return 0;
-    }
+    struct sockaddr_in *addr4 = (struct sockaddr_in *)addr;
+    addr4->sin_family = AF_INET;
+    addr4->sin_port = port;
+    addr4->sin_addr = addrNumber4;
 
-    // Trata ipv6
-    struct in6_addr addrNumber6;
-	int is_ipv6 = inet_pton(AF_INET6, addrStr, &addrNumber6);
-
-    if (is_ipv6) {
-        
-		struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)addr;
-        addr6->sin6_family = AF_INET6;
-        addr6->sin6_port = port;
-
-		/*
-			- Necessario copiar o conteudo de memorio 'na marra';
-			- Atribuicao simples nao funciona aqui do mesmo jeito que para o ipv4;
-			- Para o ipv4 o numero de endereco eh um numero (32b);
-			- Para o ipv6 o numero de endereco eh um vetor (128b);
-			- Como NAO existe atribuicao de vetor, eh necessario fazer a copia direta de memoria;
-		*/
-
-        // addr6->sin6_addr = addr_number6
-        memcpy(&(addr6->sin6_addr), &addrNumber6, sizeof(addrNumber6));
-        
-		return 0;
-    }
-
-    return -1;
+    return 1;
 }
 
-/**
- * TODO: 2021-05-27 - Implementar
- * TODO: 2021-05-27 - Renomear essa funcao
- */
 void logErrorAndDie(const char *msg) {
 	perror(msg);
 	exit(EXIT_FAILURE);
 }
 
-/**
- * TODO: 2021-05-27 - Implementar
- * TODO: 2021-05-27 - Renomear essa funcao
- */
 void explainAndDie(char **argv) {
     printf("Invalid Input\n");
     printf("Usage: %s <server IP> <server port> <text> <encryption key number>\n", argv[0]);
@@ -339,7 +297,6 @@ void caesarCipher(const char *text, const int textLength, char *cipheredText, in
 	}
 
 	cipheredText[textLength] = '\0';
-	printf("\n3: %d %s\n", (int)strlen(cipheredText), cipheredText);
 }
 
 
@@ -351,8 +308,7 @@ void debugStep(const char *text) {
 
 int validateInput(int argc, char **argv) {
 
-	// if (argc != 5) {
-	if (argc != 3) {
+	if (argc != 5) {
         debugStep("ERROR: Invalid argc!");
 		return 0;
     }
