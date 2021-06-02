@@ -91,12 +91,12 @@ int main(int argc, char **argv) {
             logexit("accept");
         }
 
-	struct client_data *cdata = malloc(sizeof(*cdata));
-	if (!cdata) {
-		logexit("malloc");
-	}
-	cdata->csock = csock;
-	memcpy(&(cdata->storage), &cstorage, sizeof(cstorage));
+        struct client_data *cdata = malloc(sizeof(*cdata));
+        if (!cdata) {
+            logexit("malloc");
+        }
+        cdata->csock = csock;
+        memcpy(&(cdata->storage), &cstorage, sizeof(cstorage));
 
         pthread_t tid;
         pthread_create(&tid, NULL, client_thread, cdata);
