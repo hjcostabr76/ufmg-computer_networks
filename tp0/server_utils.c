@@ -72,7 +72,7 @@ void serverSendFailureResponse(const int sock, char *errMsg) {
 	posixSend(sock, "0", 1);
 	close(sock);
     pthread_exit(EXIT_FAILURE);
-	logErrorAndDie(errMsg);
+	commonLogErrorAndDie(errMsg);
 }
 
 int serverValidateInput(int argc, char **argv) {

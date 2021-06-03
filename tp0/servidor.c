@@ -67,8 +67,7 @@ int main(int argc, char **argv) {
 
     commonDebugStep("Creating server socket...\n");
 
-    int serverSocket;
-    serverSocket = socket(serverAddress.ss_family, SOCK_STREAM, 0);
+    int serverSocket = socket(serverAddress.ss_family, SOCK_STREAM, 0);
     if (serverSocket == -1) {
         commonLogErrorAndDie("Failure as creating server socket [1]");
     }
@@ -191,35 +190,11 @@ void *threadClientConnectionHandler(void *data) {
     }
 
     uint32_t txtLength = atoi(txtLengthStr);
-    txtLength = htonl(txtLength);
+    txtLength = ntohl(txtLength);
 
     if (DEBUG_ENABLE) {
         char aux[200];
         sprintf(aux, "\tText Length: \"%ul\"\n", txtLength);
-        commonDebugStep(aux);
-    }
-
-    /* ================================================== */
-    /* -- Receber texto cifrado ------------------------- */
-
-    commonDebugStep("[thread] Receiving ciphered text...\n");
-    
-    char cipheredText[SIZE_BUFFER];
-    memset(cipheredText, 0, SIZE_BUFFER);
-    receivingStatus = serverReceiveParam(clientData->socket, cipheredText, txtLength, RCV_VALIDATION_LCASE);
-
-    if (receivingStatus == RCV_ERR_VALIDATION_STR) {
-        char aux[200];
-        sprintf(aux, "Invalid ciphered text received: \"%s\" [%d]", cipheredText, receivingStatus);
-        serverSendFailureResponse(clientData->socket, aux);
-
-    } else if (receivingStatus != RCV_SUCCESS) {
-        serverSendFailureResponse(clientData->socket, "Failure as trying to get ciphered text");
-    }
-
-    if (DEBUG_ENABLE) {
-        char aux[200];
-        sprintf(aux, "\tCiphered text is: \"%s\"\n", cipheredText);
         commonDebugStep(aux);
     }
 
@@ -250,23 +225,45 @@ void *threadClientConnectionHandler(void *data) {
         commonDebugStep(aux);
     }
 
-    /*=================================================== */
-    /*-- Decodificar texto ------------------------------ */
+    /* ================================================== */
+    /* -- Receber texto cifrado ------------------------- */
 
-    commonDebugStep("[thread] Decrypting text...\n");
+    commonDebugStep("[thread] Receiving ciphered text...\n");
+    
+    char cipheredText[SIZE_BUFFER];
+    memset(cipheredText, 0, SIZE_BUFFER);
+    receivingStatus = serverReceiveParam(clientData->socket, cipheredText, txtLength, RCV_VALIDATION_LCASE);
 
-	char text[txtLength];
-	memset(text, 0, txtLength);
-	caesarDecipher(cipheredText, txtLength, text, txtLength);
+    if (receivingStatus == RCV_ERR_VALIDATION_STR) {
+        char aux[200];
+        sprintf(aux, "Invalid ciphered text received: \"%s\" [%d]", cipheredText, receivingStatus);
+        serverSendFailureResponse(clientData->socket, aux);
 
-    commonDebugStep("\tText successfully decrypted:\n");
-    puts(text);
+    } else if (receivingStatus != RCV_SUCCESS) {
+        serverSendFailureResponse(clientData->socket, "Failure as trying to get ciphered text");
+    }
+
+    if (DEBUG_ENABLE) {
+        char aux[200];
+        sprintf(aux, "\tCiphered text is: \"%s\"\n", cipheredText);
+        commonDebugStep(aux);
+    }
 
     /*=================================================== */
     /*-- Enviar string decodificada --------------------- */
 
-    commonDebugStep("[thread] Sending answer to client...\n");
+    // Decodificar
+    commonDebugStep("[thread] Decrypting text...\n");
+	
+    char text[txtLength];
+	memset(text, 0, txtLength);
+	caesarDecipher(cipheredText, txtLength, text, txtLength);
+    
+    commonDebugStep("\tText successfully decrypted:\n");
+    puts(text);
 
+    // Enviar
+    commonDebugStep("[thread] Sending answer to client...\n");
     if (!posixSend(clientData->socket, text, txtLength)) {
 		commonLogErrorAndDie("Failure as sending answer to client");
 	}
@@ -276,22 +273,3 @@ void *threadClientConnectionHandler(void *data) {
     close(clientData->socket);
     pthread_exit(EXIT_SUCCESS);
 }
-
-/*
-    Set socket FD's option OPTNAME at protocol level LEVEL
-    to *OPTVAL (which is OPTLEN bytes long).
-    Returns 0 on success, -1 for errors.
-*/
-// extern int setsockopt (int __fd, int __level, int __optname, const void *__optval, socklen_t __optlen) __THROW;
-
-// SO_RCVTIMEO SO_SNDTIMEO
-
-// Specify the receiving or sending timeouts until reporting an error.  The argument  is  a
-// struct timeval.  If an input or output function blocks for this period of time, and data
-// has been sent or received, the return value of that function will be the amount of  data
-// transferred;  if  no data has been transferred and the timeout has been reached, then -1
-// is returned with errno set to EAGAIN or EWOULDBLOCK,  or  EINPROGRESS  (for  connect(2))
-// just  as  if  the socket was specified to be nonblocking.  If the timeout is set to zero
-// (the default), then the operation will never timeout.  Timeouts  only  have  effect  for
-// system  calls  that perform socket I/O (e.g., read(2), recvmsg(2), send(2), sendmsg(2));
-// timeouts have no effect for select(2), poll(2), epoll_wait(2), and so on.
