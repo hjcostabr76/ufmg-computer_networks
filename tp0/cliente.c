@@ -195,7 +195,7 @@ int main(int argc, char **argv) {
 	debugStep("\tEncryption key sent...\n");
 
 	/*=================================================== */
-    /*-- Aguardar resposta (string desencriptografada) -- */
+    /*-- Receber resposta (string desencriptografada) --- */
 
 	debugStep("Waiting server answer...\n");
 	
