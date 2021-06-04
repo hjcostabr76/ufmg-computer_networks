@@ -3,16 +3,6 @@
 #include <arpa/inet.h>
 #include <time.h>
 
-enum FdActionEnum {
-	FD_ACTION_RD = 10,
-	FD_ACTION_WT
-};
-
-/**
- * TODO: 2021-06-03 - ADD Descricao
- */
-int posixIsActionAvailable(int socketFD, const enum FdActionEnum action, struct timeval *timeout);
-
 /**
  * TODO: 2021-06-03 - ADD Descricao
  */
