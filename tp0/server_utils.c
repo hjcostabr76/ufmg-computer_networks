@@ -1,10 +1,28 @@
-#include "string_utils.h"
-#include "posix_utils.h"
-#include "common.h"
+#include "common/common.h"
+#include "common/string_utils.h"
+#include "common/posix_utils.h"
 
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <string.h>
+#include <unistd.h>
+#include <pthread.h>
+
+
+
+
+#include <stdio.h>
+
+
+
+
+
+
+
+
+
+
 
 #define RCV_VALIDATION_NUMERIC 1
 #define RCV_VALIDATION_LCASE 2
@@ -33,7 +51,7 @@ int serverInitSocket(const char *portStr, struct sockaddr_storage *address) {
     return 1;
 }
 
-int serverReceiveParam(const int sock, char *buffer, const unsigned bytesToReceive, const int validationType) {
+short int serverReceiveParam(const int sock, char *buffer, const unsigned bytesToReceive, const int validationType) {
 
     // Recebe valor do cliente
     unsigned receivedBytes = 0;
@@ -59,7 +77,7 @@ int serverReceiveParam(const int sock, char *buffer, const unsigned bytesToRecei
     } else if (!stringValidateLCaseString(buffer, bufferLength)) {
         return RCV_ERR_VALIDATION_STR;
     }
-    
+
     // Notifica sucesso no recebimento
     if (!posixSend(sock, "1", 1)) {
         return RCV_ERR_SUCCESS_RETURN;
@@ -71,20 +89,20 @@ int serverReceiveParam(const int sock, char *buffer, const unsigned bytesToRecei
 void serverSendFailureResponse(const int sock, char *errMsg) {
 	posixSend(sock, "0", 1);
 	close(sock);
-    pthread_exit(EXIT_FAILURE);
+    pthread_exit(NULL);
 	commonLogErrorAndDie(errMsg);
 }
 
 int serverValidateInput(int argc, char **argv) {
 
 	if (argc != 2) {
-        debugStep("ERROR: Invalid argc!");
+        commonDebugStep("ERROR: Invalid argc!\n");
 		return 0;
     }
 
 	const char *portStr = argv[1];
 	if (!stringValidateNumericString(portStr, strlen(portStr))) {
-		debugStep("ERROR: Invalid Port!");
+		commonDebugStep("ERROR: Invalid Port!\n");
 		return 0;
 	}
 

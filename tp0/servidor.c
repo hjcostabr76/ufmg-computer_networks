@@ -1,5 +1,6 @@
-#include "common.h"
-#include "caesar_cipher.h"
+#include "common/common.h"
+#include "common/caesar_cipher.h"
+#include "common/posix_utils.h"
 #include "server_utils.h"
 
 #include <stdio.h>
@@ -9,14 +10,15 @@
 #include <inttypes.h>
 #include <arpa/inet.h>
 #include <sys/time.h>
+#include <string.h>
+#include <unistd.h>
 
-#define SIZE_TXT_BYTES 8
 #define MAX_CONNECTIONS 2
 
 struct ClientData { int socket; struct sockaddr_storage address; };
 
 void explainAndDie(char **argv) {
-    printf("Invalid Input\n");
+    printf("\nInvalid Input\n");
     printf("Usage: %s server port>\n", argv[0]);
 	printf("Example: %s 5000\n", argv[0]);
     exit(EXIT_FAILURE);
@@ -40,7 +42,7 @@ void *threadClientConnectionHandler(void *data);
  */
 int main(int argc, char **argv) {
 
-	commonDebugStep("\nStarting...\n");
+	commonDebugStep("\nStarting...\n\n");
 
     /*=================================================== */
     /*-- Validar entrada -------------------------------- */
@@ -57,7 +59,7 @@ int main(int argc, char **argv) {
     commonDebugStep("Setting server address...\n");
     
     struct sockaddr_storage serverAddress;
-    const char serverPortStr = argv[1];
+    const char *serverPortStr = argv[1];
     if (!serverInitSocket(serverPortStr, &serverAddress)) {
         explainAndDie(argv);
     }
@@ -85,6 +87,7 @@ int main(int argc, char **argv) {
 
     struct timeval timeout;
     timeout.tv_sec = TIMEOUT_SECS;
+    timeout.tv_usec = 0;
 
     if (setsockopt(serverSocket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0) {
         commonLogErrorAndDie("Failure as creating server socket [3]");
@@ -108,12 +111,12 @@ int main(int argc, char **argv) {
 
     if (DEBUG_ENABLE) {
         
-        char serverAddressStr[SIZE_BUFFER];
-        memset(serverAddressStr, 0, SIZE_BUFFER);
-        addressToString(_address, serverAddressStr);
+        char serverAddressStr[100];
+        memset(serverAddressStr, 0, 100);
+        posixAddressToString(_address, serverAddressStr);
         
-        char aux[200];
-        memset(aux, 0, SIZE_BUFFER);
+        char aux[500];
+        memset(aux, 0, 500);
         sprintf(aux, "\nAll set! Server is bound to %s:%s and waiting for connections...\n", serverAddressStr, serverPortStr);
         commonDebugStep(aux);
     }
@@ -160,7 +163,7 @@ void *threadClientConnectionHandler(void *data) {
 
     // Notifica origem da conexao
     char clientAddrStr[INET_ADDRSTRLEN + 1] = "";
-    if (!addressToString(clientAddr, clientAddrStr)) {
+    if (!posixAddressToString(clientAddr, clientAddrStr)) {
         commonLogErrorAndDie("Failure as parsing client address");
     }
     
@@ -174,23 +177,23 @@ void *threadClientConnectionHandler(void *data) {
     /* ================================================== */
     /* -- Receber tamanho do texto a ser decodificado --- */
     
+    char buffer[SIZE_BUFFER];
     commonDebugStep("[thread] Receiving text length...\n");
     
-    char txtLengthStr[SIZE_BUFFER];
-    memset(txtLengthStr, 0, SIZE_BUFFER);
-    int receivingStatus = serverReceiveParam(clientData->socket, txtLengthStr, SIZE_TXT_BYTES, RCV_VALIDATION_NUMERIC);
+    memset(buffer, 0, SIZE_BUFFER);
+    int bytesToReceive = sizeof(uint32_t);
+    short int receivingStatus = serverReceiveParam(clientData->socket, buffer, bytesToReceive, RCV_VALIDATION_NUMERIC);
 
     if (receivingStatus == RCV_ERR_VALIDATION_STR) {
         char aux[200];
-        sprintf(aux, "Invalid text length '%s' sent by client [%d]", txtLengthStr, receivingStatus);
+        sprintf(aux, "Invalid text length '%.10s' sent by client [%d]", buffer, receivingStatus);
         serverSendFailureResponse(clientData->socket, aux);
 
     } else if (receivingStatus != RCV_SUCCESS) {
         serverSendFailureResponse(clientData->socket, "Failure as trying to get message length");
     }
 
-    uint32_t txtLength = atoi(txtLengthStr);
-    txtLength = ntohl(txtLength);
+    const uint32_t txtLength = ntohl(atoi(buffer));
 
     if (DEBUG_ENABLE) {
         char aux[200];
@@ -203,21 +206,20 @@ void *threadClientConnectionHandler(void *data) {
 
     commonDebugStep("[thread] Receiving cipher key...\n");
     
-    char cipherKeyStr[SIZE_BUFFER];
-    memset(cipherKeyStr, 0, SIZE_BUFFER);
-    receivingStatus = serverReceiveParam(clientData->socket, cipherKeyStr, SIZE_TXT_BYTES, RCV_VALIDATION_NUMERIC);
+    memset(buffer, 0, SIZE_NUMBER_STR);
+    bytesToReceive = sizeof(uint32_t);
+    receivingStatus = serverReceiveParam(clientData->socket, buffer, bytesToReceive, RCV_VALIDATION_NUMERIC);
 
     if (receivingStatus == RCV_ERR_VALIDATION_STR) {
-        char aux[200];
-        sprintf(aux, "Invalid cipher key '%s' sent by client [%d]", cipherKeyStr, receivingStatus);
+        char aux[SIZE_BUFFER];
+        sprintf(aux, "Invalid cipher key '%.400s' sent by client [%d]", buffer, receivingStatus);
         serverSendFailureResponse(clientData->socket, aux);
 
     } else if (receivingStatus != RCV_SUCCESS) {
         serverSendFailureResponse(clientData->socket, "Failure as trying to get cipher key");
     }
 
-    uint32_t cipherKey = atoi(cipherKeyStr);
-    cipherKey = htonl(cipherKey);
+    const uint32_t cipherKey = htonl(atoi(buffer));
 
     if (DEBUG_ENABLE) {
         char aux[200];
@@ -230,13 +232,12 @@ void *threadClientConnectionHandler(void *data) {
 
     commonDebugStep("[thread] Receiving ciphered text...\n");
     
-    char cipheredText[SIZE_BUFFER];
-    memset(cipheredText, 0, SIZE_BUFFER);
-    receivingStatus = serverReceiveParam(clientData->socket, cipheredText, txtLength, RCV_VALIDATION_LCASE);
+    memset(buffer, 0, SIZE_BUFFER);
+    receivingStatus = serverReceiveParam(clientData->socket, buffer, txtLength, RCV_VALIDATION_LCASE);
 
     if (receivingStatus == RCV_ERR_VALIDATION_STR) {
-        char aux[200];
-        sprintf(aux, "Invalid ciphered text received: \"%s\" [%d]", cipheredText, receivingStatus);
+        char aux[SIZE_BUFFER];
+        sprintf(aux, "Invalid ciphered text received: \"%.600s...\" [%d]", buffer, receivingStatus);
         serverSendFailureResponse(clientData->socket, aux);
 
     } else if (receivingStatus != RCV_SUCCESS) {
@@ -244,8 +245,8 @@ void *threadClientConnectionHandler(void *data) {
     }
 
     if (DEBUG_ENABLE) {
-        char aux[200];
-        sprintf(aux, "\tCiphered text is: \"%s\"\n", cipheredText);
+        char aux[SIZE_BUFFER];
+        sprintf(aux, "\tCiphered text is: \"%.600s...\"\n", buffer);
         commonDebugStep(aux);
     }
 
@@ -257,7 +258,7 @@ void *threadClientConnectionHandler(void *data) {
 	
     char text[txtLength];
 	memset(text, 0, txtLength);
-	caesarDecipher(cipheredText, txtLength, text, txtLength);
+	caesarDecipher(buffer, txtLength, text, txtLength);
     
     commonDebugStep("\tText successfully decrypted:\n");
     puts(text);

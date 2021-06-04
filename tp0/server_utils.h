@@ -1,5 +1,7 @@
 #pragma once
 
+#include <arpa/inet.h>
+
 #define RCV_VALIDATION_NUMERIC 1
 #define RCV_VALIDATION_LCASE 2
 
@@ -17,7 +19,7 @@ int serverInitSocket(const char *portStr, struct sockaddr_storage *address);
 /**
  * TODO: 2021-06-03 - ADD Descricao
  */
-int serverReceiveParam(const int sock, char *buffer, const unsigned bytesToReceive, const int validationType);
+short int serverReceiveParam(const int sock, char *buffer, const unsigned bytesToReceive, const int validationType);
 
 /**
  * TODO: 2021-06-03 - ADD Descricao

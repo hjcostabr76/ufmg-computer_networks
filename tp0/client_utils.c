@@ -1,30 +1,32 @@
-#include "string_utils.h"
+#include "common/common.h"
+#include "common/string_utils.h"
 
 #include <stdlib.h>
+#include <string.h>
 #include <arpa/inet.h>
 
 int clientValidateInput(int argc, char **argv) {
 
 	if (argc != 5) {
-        debugStep("ERROR: Invalid argc!");
+        commonDebugStep("ERROR: Invalid argc!\n");
 		return 0;
     }
 
 	const char *portStr = argv[2];
 	if (!stringValidateNumericString(portStr, strlen(portStr))) {
-		debugStep("ERROR: Invalid Port!");
+		commonDebugStep("ERROR: Invalid Port!\n");
 		return 0;
 	}
 
 	const char *msg = argv[3];
 	if (!stringValidateLCaseString(msg, strlen(msg))) {
-		debugStep("ERROR: Invalid Text!");
+		commonDebugStep("ERROR: Invalid Text!\n");
 		return 0;
 	}
 
 	const char *cipherKeyStr = argv[4];
 	if (!stringValidateNumericString(cipherKeyStr, strlen(cipherKeyStr))) {
-		debugStep("ERROR: Invalid Cipher Key!");
+		commonDebugStep("ERROR: Invalid Cipher Key!\n");
 		return 0;
 	}
 

@@ -2,7 +2,9 @@
 
 #define DEBUG_ENABLE 1
 #define TIMEOUT_SECS 15
+
 #define SIZE_BUFFER 1024
+#define SIZE_NUMBER_STR 10
 
 #define ASCII_NUMBER_FIRST 48
 #define ASCII_NUMBER_LAST 57

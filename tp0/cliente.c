@@ -1,19 +1,19 @@
-#include "common.h"
+#include "common/common.h"
+#include "common/posix_utils.h"
+#include "common/caesar_cipher.h"
 #include "client_utils.h"
-#include "posix_utils.h"
 
 #include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 #include <arpa/inet.h>
-
-/**
- * TODO: 2021-06-03 - Checar a devida localizacao disso aqui...
- */
-#define SIZE_NUMBER_STR 10
+#include <unistd.h>
+#include <sys/time.h>
 
 void explainAndDie(char **argv) {
-    printf("Invalid Input\n");
+    printf("\nInvalid Input\n");
     printf("Usage: %s <server IP> <server port> <text> <encryption key number>\n", argv[0]);
-    printf("\nOnly lowercase with no spaces strings are accepted as text.\n");
+    printf("Only lowercase with no spaces strings are accepted as text!\n");
 	printf("Example: %s 127.0.0.1 5000 lorenipsumdolur 4\n", argv[0]);
     exit(EXIT_FAILURE);
 }
@@ -31,7 +31,7 @@ int main(int argc, char **argv) {
 
 	const int debugTextLength = DEBUG_ENABLE ? 200 : 0;
 	char debugTxt[debugTextLength];
-	commonDebugStep("Starting...\n");
+	commonDebugStep("\nStarting...\n\n");
 
     /*=================================================== */
     /*-- Validar entrada -------------------------------- */
@@ -71,6 +71,8 @@ int main(int argc, char **argv) {
 
     struct timeval timeout;
     timeout.tv_sec = TIMEOUT_SECS;
+    timeout.tv_usec = 0;
+
     if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0) {
         commonLogErrorAndDie("Failure as creating socket [2]");
     }
@@ -88,34 +90,33 @@ int main(int argc, char **argv) {
 	}
 	
 	if (DEBUG_ENABLE) {
-		sprintf(debugTxt, "\nConnected to s:%s\n", addrStr, portStr);
+		sprintf(debugTxt, "\nConnected to %s:%s\n", addrStr, portStr);
 		commonDebugStep(debugTxt);
 	}
 
 	/*=================================================== */
     /*-- Enviar tamanho da string ----------------------- */
 
+	char buffer[SIZE_BUFFER];
 	commonDebugStep("Sending message length...\n");
 	
 	// Enviar
-	const char *msg = argv[3];
-	uint32_t msgLength = strlen(msg);
-	msgLength = htonl(msgLength);
-	
-	char msgLengthStr[SIZE_NUMBER_STR];
-	memset(msgLengthStr, 0, SIZE_NUMBER_STR);
-	snprintf(msgLengthStr, SIZE_NUMBER_STR, "%d", msgLength);
+	const char *text = argv[3];
+	uint32_t txtLength = htonl(strlen(text));
 
-	int bytesToSend = strlen(msgLengthStr) + 1;
-	if (!posixSend(sock, msgLengthStr, bytesToSend)) {
-        commonLogErrorAndDie("Failure as sending msg length");
+	memset(buffer, 0, SIZE_BUFFER);
+	snprintf(buffer, SIZE_BUFFER, "%d", txtLength);
+	int bytesToSend = strlen(buffer) + 2;
+
+	if (!posixSend(sock, buffer, bytesToSend)) {
+        commonLogErrorAndDie("Failure as sending text length");
     }
 
 	// Receber retorno
-	char *sendingConfirmation = "0";
 	unsigned receivedBytes = 0;
-	posixReceive(sock, sendingConfirmation, &receivedBytes);
-	if (sendingConfirmation != "1") {
+	memset(buffer, 0, SIZE_BUFFER);
+	posixReceive(sock, buffer, &receivedBytes);
+	if (strcmp(buffer, "1") != 0) {
 		commonLogErrorAndDie("Server sent failure response");
 	}
 
@@ -126,19 +127,20 @@ int main(int argc, char **argv) {
 
 	// Enviar
 	const char *cipherKeyStr = argv[4];
-	uint32_t cipherKey = atoi(cipherKeyStr);
-	cipherKey = htonl(cipherKey);
+	uint32_t cipherKey = htonl(atoi(cipherKeyStr));
 
-	bytesToSend = strlen(cipherKeyStr) + 1;
-	if (!posixSend(sock, cipherKeyStr, bytesToSend)) {
+	memset(buffer, 0, SIZE_BUFFER);
+	snprintf(buffer, SIZE_BUFFER, "%d", cipherKey);
+	bytesToSend = strlen(buffer) + 1;
+
+	if (!posixSend(sock, buffer, bytesToSend)) {
         commonLogErrorAndDie("Failure as sending cipher key");
     }
 
 	// Receber retorno
-	sendingConfirmation = "0";
 	receivedBytes = 0;
-	posixReceive(sock, sendingConfirmation, &receivedBytes);
-	if (sendingConfirmation != "1") {
+	posixReceive(sock, buffer, &receivedBytes);
+	if (strcmp(buffer, "1") != 0) {
 		commonLogErrorAndDie("Server sent failure response");
 	}
 
@@ -148,12 +150,11 @@ int main(int argc, char **argv) {
 	commonDebugStep("Sending message...\n");
 
 	// Enviar
-	char cipheredMsg[msgLength];
-	memset(cipheredMsg, 0, msgLength); // Inicializar buffer com 0
-	caesarCipher(msg, msgLength, cipheredMsg, cipherKey);
+	memset(buffer, 0, SIZE_BUFFER); // Inicializar buffer com 0
+	caesarCipher(text, txtLength, buffer, cipherKey);
+	bytesToSend = strlen(buffer) + 1;
 
-	bytesToSend = msgLength + 1;
-	if (!posixSend(sock, cipheredMsg, bytesToSend)) {
+	if (!posixSend(sock, buffer, bytesToSend)) {
         commonLogErrorAndDie("Failure as sending message");
     }
 
@@ -162,13 +163,12 @@ int main(int argc, char **argv) {
 
 	commonDebugStep("Waiting server answer...\n");
 	
-	char answer[SIZE_BUFFER];
-	memset(answer, 0, SIZE_BUFFER); // Inicializar buffer com 0
-
+	memset(buffer, 0, SIZE_BUFFER);
 	receivedBytes = 0;
-	posixReceive(sock, answer, &receivedBytes);
-	if (receivedBytes != SIZE_BUFFER) {
-		sprintf(debugTxt, "Invalid deciphered response from server: \"%.1000s\"\n", answer);
+	posixReceive(sock, buffer, &receivedBytes);
+
+	if (receivedBytes < txtLength) {
+		sprintf(debugTxt, "Invalid deciphered response from server: \"%.1000s\"\n", buffer);
 		commonLogErrorAndDie(debugTxt);
 	}
 
@@ -180,8 +180,7 @@ int main(int argc, char **argv) {
 	/*=================================================== */
     /*-- Imprimir resposta ------------------------------ */
 	
-	puts(answer);
-
+	puts(buffer);
 	close(sock);
 	exit(EXIT_SUCCESS);
 }

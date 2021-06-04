@@ -1,5 +1,6 @@
 #include "common.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 
 void commonLogErrorAndDie(const char *msg) {
@@ -9,6 +10,6 @@ void commonLogErrorAndDie(const char *msg) {
 
 void commonDebugStep(const char *text) {
 	if (DEBUG_ENABLE) {
-		puts(text);
+		printf("%s", text);
 	}
 }
