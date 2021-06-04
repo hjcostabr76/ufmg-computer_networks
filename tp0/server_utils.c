@@ -1,6 +1,7 @@
 #include "common/common.h"
 #include "common/string_utils.h"
 #include "common/posix_utils.h"
+#include "server_utils.h"
 
 #include <stdlib.h>
 #include <sys/socket.h>
@@ -8,31 +9,12 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <time.h>
 
 
+// #include <stdio.h>
 
 
-#include <stdio.h>
-
-
-
-
-
-
-
-
-
-
-
-#define RCV_VALIDATION_NUMERIC 1
-#define RCV_VALIDATION_LCASE 2
-
-#define RCV_ERR_BYTES_COUNT -1
-#define RCV_ERR_VALIDATION_PARAM -2
-#define RCV_ERR_VALIDATION_STR -3
-#define RCV_ERR_SUCCESS_RETURN -4
-
-#define RCV_SUCCESS 1
 
 int serverInitSocket(const char *portStr, struct sockaddr_storage *address) {
     
@@ -51,43 +33,8 @@ int serverInitSocket(const char *portStr, struct sockaddr_storage *address) {
     return 1;
 }
 
-short int serverReceiveParam(const int sock, char *buffer, const unsigned bytesToReceive, const int validationType) {
-
-    // Recebe valor do cliente
-    unsigned receivedBytes = 0;
-    posixReceive(sock, buffer, &receivedBytes);
-
-    // Validar: Contagem de butes
-    if (receivedBytes != bytesToReceive) {
-        return RCV_ERR_BYTES_COUNT;
-    }
-
-    // Validar: Conteudo
-    if (validationType != RCV_VALIDATION_NUMERIC && validationType != RCV_VALIDATION_LCASE) {
-        return RCV_ERR_VALIDATION_PARAM;
-    }
-
-    const int bufferLength = sizeof(buffer);
-
-    if (validationType == RCV_VALIDATION_NUMERIC) {
-        if (!stringValidateNumericString(buffer, bufferLength)) {
-            return RCV_ERR_VALIDATION_STR;
-        }
-
-    } else if (!stringValidateLCaseString(buffer, bufferLength)) {
-        return RCV_ERR_VALIDATION_STR;
-    }
-
-    // Notifica sucesso no recebimento
-    if (!posixSend(sock, "1", 1)) {
-        return RCV_ERR_SUCCESS_RETURN;
-    }
-    
-    return RCV_SUCCESS;
-}
-
-void serverSendFailureResponse(const int sock, char *errMsg) {
-	posixSend(sock, "0", 1);
+void serverSendFailureResponse(const int sock, char *errMsg, struct timeval *timeout) {
+	posixSend(sock, "0", 1, timeout);
 	close(sock);
     pthread_exit(NULL);
 	commonLogErrorAndDie(errMsg);
@@ -107,4 +54,63 @@ int serverValidateInput(int argc, char **argv) {
 	}
 
 	return 1;
+}
+
+void serverRecvParam(
+    const int socketFD,
+    char *buffer,
+    const unsigned bytesToRecv,
+    const enum ServerRecvValidationEnum validationType,
+    struct timeval *timeout,
+    const char *opLabel
+) {
+
+    short int recvStatus = serverReceiveParam(socketFD, buffer, bytesToRecv, RCV_VALIDATION_NUMERIC);
+    if (recvStatus != RCV_SUCCESS)
+        return;
+
+    char aux[BUF_SIZE];
+
+    if (recvStatus == RCV_ERR_VALIDATION_STR)
+        sprintf(aux, "Invalid data sent by client [%d / %s]: \"%.800s\"", recvStatus, opLabel, buffer);
+    else
+        sprintf(aux, "Failure as trying to get data from client [%d / %s]: \"%.800s\"", recvStatus, opLabel, buffer);
+
+    serverSendFailureResponse(socketFD, aux, timeout);
+}
+
+short int serverRecvParamAux(
+    const int socketFD,
+    char *buffer,
+    const unsigned bytesToRecv,
+    const enum ServerRecvValidationEnum validationType,
+    struct timeval *timeout
+) {
+
+    // Recebe valor do cliente
+    unsigned receivedBytes = 0;
+    posixRecv(socketFD, buffer, &receivedBytes, timeout);
+
+    // Validar: Contagem de butes
+    if (receivedBytes < bytesToRecv)
+        return RCV_ERR_BYTES_COUNT;
+
+    // Validar: Conteudo recebido
+    const int bufLen = sizeof(buffer);
+
+    switch (validationType) {
+        case RCV_VALIDATION_NUMERIC:
+            if (!stringValidateNumericString(buffer, bufLen))
+                return RCV_ERR_VALIDATION_STR;
+            break;
+        case RCV_VALIDATION_LCASE:
+            if (!stringValidateLCaseString(buffer, bufLen))
+                return RCV_ERR_VALIDATION_STR;
+            break;
+        default:
+            return RCV_ERR_VALIDATION_PARAM;
+    }
+    
+    // Notifica sucesso no recebimento
+    return posixSend(socketFD, "1", 1, timeout) ? RCV_SUCCESS : RCV_ERR_SUCCESS_RETURN;
 }

@@ -33,65 +33,29 @@ int main(int argc, char **argv) {
 	char dbgTxt[dbgTxtLen];
 	commonDebugStep("\nStarting...\n\n");
 
-    /*=================================================== */
-    /*-- Validar entrada -------------------------------- */
-
+    // Validar entrada
 	commonDebugStep("Validating input...\n");
     if (!clientValidateInput(argc, argv)) {
         explainAndDie(argv);
     }
 
-	/*
-		Define endereco do socket:
-
-		- Struct sockaddr_storage equivale a uma 'super classe';
-		- Permite alocar enderecos tanto ipv4 quanto ipv6;
-		- sockaddr_in / sockaddr_in6;
-	*/
-
-	commonDebugStep("Parsing addr...\n");
-	struct sockaddr_storage addr;
-	const char *addrStr = argv[1];
-	const char *portStr = argv[2];
-	if (!clientParseAddress(addrStr, portStr, &addr)) // Funcao customizada
-		explainAndDie(argv);
-    
-	/*=================================================== */
-    /*-- Conectar com servidor -------------------------- */
-
+	// Conectar com servidor
 	commonDebugStep("Creating socket...\n");
-	int socketFD = socket(addr.ss_family, SOCK_STREAM, 0); // socket tcp (existem outros tipos)
-	if (socketFD == -1)
-		commonLogErrorAndDie("Failure as creating socket [1]");
 
-	// Define timeout de escuta
-    commonDebugStep("Setting listening timeout...\n");
-
-    struct timeval timeout;
+	struct timeval timeout;
     timeout.tv_sec = TIMEOUT_SECS;
     timeout.tv_usec = 0;
 
-    if (setsockopt(socketFD, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0)
-		commonLogErrorAndDie("Failure as creating socket [2]");
-
-	/*
-		Cria conexao no enderenco (IP + Porta) do socket
-		- Struct sockaddr equivale a uma 'interface' implementada por sockaddr_in / sockaddr_in6;
-	*/
-
-	commonDebugStep("Creating connection...\n");
-
-	if (connect(socketFD, (struct sockaddr *)(&addr), sizeof(addr)) != 0)
-		commonLogErrorAndDie("Failure as connecting to server");
+	const char *addrStr = argv[1];
+	const char *portStr = argv[2];
+	int socketFD = posixConnect(atoi(portStr), addrStr, &timeout);
 	
 	if (DEBUG_ENABLE) {
 		sprintf(dbgTxt, "\nConnected to %s:%s\n", addrStr, portStr);
 		commonDebugStep(dbgTxt);
 	}
 
-	/*=================================================== */
-    /*-- Enviar tamanho da string ----------------------- */
-
+	// Enviar tamanho da string
 	char buffer[BUF_SIZE];
 	
 	commonDebugStep("Sending message length...\n");
@@ -99,30 +63,24 @@ int main(int argc, char **argv) {
 	uint32_t txtLen = htonl(strlen(text));
 	clientSendParam(socketFD, buffer, txtLen, &timeout, CLI_SEND_PARAM_NUM, 1, 1);
 
-	/*=================================================== */
-    /*-- Enviar chave da cifra -------------------------- */
-
+	// Enviar chave da cifra
 	commonDebugStep("Sending encryption key...\n");
 	const char *cipherKeyStr = argv[4];
 	uint32_t cipherKey = htonl(atoi(cipherKeyStr));
 	clientSendParam(socketFD, buffer, &cipherKey, &timeout, CLI_SEND_PARAM_NUM, 2, 1);
 
-	/*=================================================== */
-    /*-- Enviar string cifrada -------------------------- */
-
+	// Enviar string cifrada
 	commonDebugStep("Sending message...\n");
 	memset(buffer, 0, BUF_SIZE); // Inicializar buffer com 0
 	caesarCipher(text, txtLen, buffer, cipherKey);
 	clientSendParam(socketFD, buffer, &cipherKey, &timeout, CLI_SEND_PARAM_STR, 2, 0);
 
-	/*=================================================== */
-    /*-- Receber resposta (string desencriptografada) --- */
-
+	// Receber resposta (string desencriptografada)
 	commonDebugStep("Waiting server answer...\n");
 	
 	memset(buffer, 0, BUF_SIZE);
 	unsigned receivedBytes = 0;
-	posixReceive(socketFD, buffer, &receivedBytes, &timeout);
+	posixRecv(socketFD, buffer, &receivedBytes, &timeout);
 
 	if (receivedBytes < txtLen) {
 		sprintf(dbgTxt, "Invalid deciphered response from server: \"%.1000s\"\n", buffer);
@@ -134,9 +92,7 @@ int main(int argc, char **argv) {
 		commonDebugStep(dbgTxt);
 	}
 
-	/*=================================================== */
-    /*-- Imprimir resposta ------------------------------ */
-	
+	// Imprimir resposta
 	puts(buffer);
 	close(socketFD);
 	exit(EXIT_SUCCESS);

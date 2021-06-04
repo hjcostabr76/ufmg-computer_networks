@@ -4,9 +4,19 @@
 #include <time.h>
 
 /**
+ * TODO: 2021-06-04 - ADD Descricao
+ */
+static int posixListen(const int port, const struct timeval *timeout, const int maxConnections, char *boundAddrStr);
+
+/**
+ * TODO: 2021-06-04 - ADD Descricao
+ */
+static int posixConnect(const int port, const char *addrStr, struct timeval *timeout);
+
+/**
  * TODO: 2021-06-03 - ADD Descricao
  */
-void posixReceive(const int socketFD, char *buffer, unsigned *recvBytesAcc, struct timeval *timeout);
+void posixRecv(const int socketFD, char *buffer, unsigned *recvBytesAcc, struct timeval *timeout);
 
 /**
  * TODO: 2021-06-03 - ADD Descricao

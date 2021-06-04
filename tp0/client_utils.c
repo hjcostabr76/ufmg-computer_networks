@@ -51,9 +51,8 @@ int clientParseAddress(const char *addrStr, const char *portstr, struct sockaddr
     // Trata ipv4
     struct in_addr addrNumber4;
 	int is_ipv4 = inet_pton(AF_INET, addrStr, &addrNumber4);
-	if (!is_ipv4) {
+	if (!is_ipv4)
 		return 0;
-	}
 
     struct sockaddr_in *addr4 = (struct sockaddr_in *)addr;
     addr4->sin_family = AF_INET;
@@ -100,7 +99,7 @@ void clientSendParam(
 
 	unsigned receivedBytes = 0;
 	memset(buffer, 0, BUF_SIZE);
-	posixReceive(socketFD, buffer, &receivedBytes, timeout);
+	posixRecv(socketFD, buffer, &receivedBytes, timeout);
 
 	if (strcmp(buffer, "1") != 0) {
         char aux[100];
