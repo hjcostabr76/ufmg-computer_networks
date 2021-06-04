@@ -25,11 +25,6 @@ enum ServerRecvReturnEnum {
 /**
  * TODO: 2021-06-03 - ADD Descricao
  */
-int serverInitSocket(const char *portStr, struct sockaddr_storage *address);
-
-/**
- * TODO: 2021-06-03 - ADD Descricao
- */
 void serverRecvParam(
     const int socketFD,
     char *buffer,

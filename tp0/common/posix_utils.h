@@ -6,12 +6,12 @@
 /**
  * TODO: 2021-06-04 - ADD Descricao
  */
-static int posixListen(const int port, const struct timeval *timeout, const int maxConnections, char *boundAddrStr);
+int posixListen(const int port, const struct timeval *timeout, const int maxConnections, char *boundAddrStr);
 
 /**
  * TODO: 2021-06-04 - ADD Descricao
  */
-static int posixConnect(const int port, const char *addrStr, struct timeval *timeout);
+int posixConnect(const int port, const char *addrStr, const struct timeval *timeout);
 
 /**
  * TODO: 2021-06-03 - ADD Descricao
@@ -26,4 +26,4 @@ int posixSend(const int socketFD, const char *buffer, const int bytesToSend, str
 /**
  * TODO: 2021-06-03 - ADD Descricao
  */
-int posixAddressToString(const struct sockaddr *address, char *addressString);
+int posixAddressToString(const struct sockaddr *addr, char *addrStr);

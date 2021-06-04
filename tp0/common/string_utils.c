@@ -7,9 +7,8 @@
 int stringValidateLCaseString(const char *string, const int strLength) {
 
 	for (int i; i < strLength; i++) {
-		if ((int)string[i] < ASCII_LC_LETTER_FIRST || (int)string[i] > ASCII_LC_LETTER_LAST) {
+		if ((int)string[i] < ASCII_LC_LETTER_FIRST || (int)string[i] > ASCII_LC_LETTER_LAST)
 			return 0;
-		}
 	}
 
 	return 1;
@@ -18,9 +17,8 @@ int stringValidateLCaseString(const char *string, const int strLength) {
 int stringValidateNumericString(const char *string, const int strLength) {
 
 	for (int i; i < strLength; i++) {
-		if ((int)string[i] < ASCII_NUMBER_FIRST || (int)string[i] > ASCII_NUMBER_LAST) {
+		if ((int)string[i] < ASCII_NUMBER_FIRST || (int)string[i] > ASCII_NUMBER_LAST)
 			return 0;
-		}
 	}
 
 	return 1;

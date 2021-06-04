@@ -61,19 +61,22 @@ int main(int argc, char **argv) {
 	commonDebugStep("Sending message length...\n");
 	const char *text = argv[3];
 	uint32_t txtLen = htonl(strlen(text));
-	clientSendParam(socketFD, buffer, txtLen, &timeout, CLI_SEND_PARAM_NUM, 1, 1);
+	clientSendNumericParam(socketFD, buffer, txtLen, &timeout, 1);
 
 	// Enviar chave da cifra
 	commonDebugStep("Sending encryption key...\n");
 	const char *cipherKeyStr = argv[4];
 	uint32_t cipherKey = htonl(atoi(cipherKeyStr));
-	clientSendParam(socketFD, buffer, &cipherKey, &timeout, CLI_SEND_PARAM_NUM, 2, 1);
+	clientSendNumericParam(socketFD, buffer, cipherKey, &timeout, 2);
 
 	// Enviar string cifrada
 	commonDebugStep("Sending message...\n");
-	memset(buffer, 0, BUF_SIZE); // Inicializar buffer com 0
+	memset(buffer, 0, BUF_SIZE);
 	caesarCipher(text, txtLen, buffer, cipherKey);
-	clientSendParam(socketFD, buffer, &cipherKey, &timeout, CLI_SEND_PARAM_STR, 2, 0);
+
+	unsigned bytesToSend = strlen(buffer) + 1;
+	if (!posixSend(socketFD, buffer, bytesToSend, &timeout))
+		commonLogErrorAndDie("Failure as sending ciphered text");
 
 	// Receber resposta (string desencriptografada)
 	commonDebugStep("Waiting server answer...\n");
