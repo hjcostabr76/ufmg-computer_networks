@@ -1,5 +1,6 @@
 #include "common/common.h"
 #include "common/string_utils.h"
+#include "client_utils.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -60,4 +61,50 @@ int clientParseAddress(const char *addrStr, const char *portstr, struct sockaddr
     addr4->sin_addr = addrNumber4;
 
     return 1;
+}
+
+void clientSendParam(
+	const int socketFD,
+	char *buffer,
+	const void *valueToSend,
+	const struct timeval *timeout,
+	const enum ClientFooEnum varType,
+	const int opNum,
+	const short int mustWaitForAnswer
+) {
+
+    // Preparar conteudo do buffer
+	memset(buffer, 0, BUF_SIZE);
+
+    if (varType == CLI_SEND_PARAM_NUM)
+        snprintf(buffer, BUF_SIZE, "%d", (int)valueToSend);
+    else if (varType == CLI_SEND_PARAM_STR)
+        snprintf(buffer, BUF_SIZE, "%s", (char *)valueToSend);
+    else {
+        char aux[100];
+        sprintf(aux, "Invalid varType for client parameter sending [%d]", opNum);
+        commonLogErrorAndDie(aux);
+    }
+
+    // Enviar parametro
+	int bytesToSend = strlen(buffer) + 1;
+	if (!posixSend(socketFD, buffer, bytesToSend, timeout)) {
+        char aux[100];
+        sprintf(aux, "Failure as sending text length [%d]", opNum);
+        commonLogErrorAndDie(aux);
+    }
+
+	// Receber retorno
+	if (mustWaitForAnswer == 0)
+		return;
+
+	unsigned receivedBytes = 0;
+	memset(buffer, 0, BUF_SIZE);
+	posixReceive(socketFD, buffer, &receivedBytes, timeout);
+
+	if (strcmp(buffer, "1") != 0) {
+        char aux[100];
+        sprintf(aux, "Server sent failure response [%d]", opNum);
+        commonLogErrorAndDie(aux);
+	}
 }

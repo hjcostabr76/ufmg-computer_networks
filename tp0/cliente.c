@@ -29,8 +29,8 @@ void explainAndDie(char **argv) {
  */
 int main(int argc, char **argv) {
 
-	const int debugTextLength = DEBUG_ENABLE ? 200 : 0;
-	char debugTxt[debugTextLength];
+	const int dbgTxtLen = DEBUG_ENABLE ? 200 : 0;
+	char dbgTxt[dbgTxtLen];
 	commonDebugStep("\nStarting...\n\n");
 
     /*=================================================== */
@@ -49,22 +49,20 @@ int main(int argc, char **argv) {
 		- sockaddr_in / sockaddr_in6;
 	*/
 
-	commonDebugStep("Parsing address...\n");
-	struct sockaddr_storage address;
+	commonDebugStep("Parsing addr...\n");
+	struct sockaddr_storage addr;
 	const char *addrStr = argv[1];
 	const char *portStr = argv[2];
-	if (!clientParseAddress(addrStr, portStr, &address)) { // Funcao customizada
+	if (!clientParseAddress(addrStr, portStr, &addr)) // Funcao customizada
 		explainAndDie(argv);
-	}
     
 	/*=================================================== */
     /*-- Conectar com servidor -------------------------- */
 
 	commonDebugStep("Creating socket...\n");
-	int sock = socket(address.ss_family, SOCK_STREAM, 0); // socket tcp (existem outros tipos)
-	if (sock == -1) {
+	int socketFD = socket(addr.ss_family, SOCK_STREAM, 0); // socket tcp (existem outros tipos)
+	if (socketFD == -1)
 		commonLogErrorAndDie("Failure as creating socket [1]");
-	}
 
 	// Define timeout de escuta
     commonDebugStep("Setting listening timeout...\n");
@@ -73,9 +71,8 @@ int main(int argc, char **argv) {
     timeout.tv_sec = TIMEOUT_SECS;
     timeout.tv_usec = 0;
 
-    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0) {
-        commonLogErrorAndDie("Failure as creating socket [2]");
-    }
+    if (setsockopt(socketFD, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0)
+		commonLogErrorAndDie("Failure as creating socket [2]");
 
 	/*
 		Cria conexao no enderenco (IP + Porta) do socket
@@ -84,103 +81,63 @@ int main(int argc, char **argv) {
 
 	commonDebugStep("Creating connection...\n");
 
-	struct sockaddr *_address = (struct sockaddr *)(&address);
-	if (0 != connect(sock, _address, sizeof(address))) {
+	if (connect(socketFD, (struct sockaddr *)(&addr), sizeof(addr)) != 0)
 		commonLogErrorAndDie("Failure as connecting to server");
-	}
 	
 	if (DEBUG_ENABLE) {
-		sprintf(debugTxt, "\nConnected to %s:%s\n", addrStr, portStr);
-		commonDebugStep(debugTxt);
+		sprintf(dbgTxt, "\nConnected to %s:%s\n", addrStr, portStr);
+		commonDebugStep(dbgTxt);
 	}
 
 	/*=================================================== */
     /*-- Enviar tamanho da string ----------------------- */
 
-	char buffer[SIZE_BUFFER];
-	commonDebugStep("Sending message length...\n");
+	char buffer[BUF_SIZE];
 	
-	// Enviar
+	commonDebugStep("Sending message length...\n");
 	const char *text = argv[3];
-	uint32_t txtLength = htonl(strlen(text));
-
-	memset(buffer, 0, SIZE_BUFFER);
-	snprintf(buffer, SIZE_BUFFER, "%d", txtLength);
-	int bytesToSend = strlen(buffer) + 2;
-
-	if (!posixSend(sock, buffer, bytesToSend)) {
-        commonLogErrorAndDie("Failure as sending text length");
-    }
-
-	// Receber retorno
-	unsigned receivedBytes = 0;
-	memset(buffer, 0, SIZE_BUFFER);
-	posixReceive(sock, buffer, &receivedBytes);
-	if (strcmp(buffer, "1") != 0) {
-		commonLogErrorAndDie("Server sent failure response");
-	}
+	uint32_t txtLen = htonl(strlen(text));
+	clientSendParam(socketFD, buffer, txtLen, &timeout, CLI_SEND_PARAM_NUM, 1, 1);
 
 	/*=================================================== */
     /*-- Enviar chave da cifra -------------------------- */
 
 	commonDebugStep("Sending encryption key...\n");
-
-	// Enviar
 	const char *cipherKeyStr = argv[4];
 	uint32_t cipherKey = htonl(atoi(cipherKeyStr));
-
-	memset(buffer, 0, SIZE_BUFFER);
-	snprintf(buffer, SIZE_BUFFER, "%d", cipherKey);
-	bytesToSend = strlen(buffer) + 1;
-
-	if (!posixSend(sock, buffer, bytesToSend)) {
-        commonLogErrorAndDie("Failure as sending cipher key");
-    }
-
-	// Receber retorno
-	receivedBytes = 0;
-	posixReceive(sock, buffer, &receivedBytes);
-	if (strcmp(buffer, "1") != 0) {
-		commonLogErrorAndDie("Server sent failure response");
-	}
+	clientSendParam(socketFD, buffer, &cipherKey, &timeout, CLI_SEND_PARAM_NUM, 2, 1);
 
 	/*=================================================== */
     /*-- Enviar string cifrada -------------------------- */
 
 	commonDebugStep("Sending message...\n");
-
-	// Enviar
-	memset(buffer, 0, SIZE_BUFFER); // Inicializar buffer com 0
-	caesarCipher(text, txtLength, buffer, cipherKey);
-	bytesToSend = strlen(buffer) + 1;
-
-	if (!posixSend(sock, buffer, bytesToSend)) {
-        commonLogErrorAndDie("Failure as sending message");
-    }
+	memset(buffer, 0, BUF_SIZE); // Inicializar buffer com 0
+	caesarCipher(text, txtLen, buffer, cipherKey);
+	clientSendParam(socketFD, buffer, &cipherKey, &timeout, CLI_SEND_PARAM_STR, 2, 0);
 
 	/*=================================================== */
     /*-- Receber resposta (string desencriptografada) --- */
 
 	commonDebugStep("Waiting server answer...\n");
 	
-	memset(buffer, 0, SIZE_BUFFER);
-	receivedBytes = 0;
-	posixReceive(sock, buffer, &receivedBytes);
+	memset(buffer, 0, BUF_SIZE);
+	unsigned receivedBytes = 0;
+	posixReceive(socketFD, buffer, &receivedBytes, &timeout);
 
-	if (receivedBytes < txtLength) {
-		sprintf(debugTxt, "Invalid deciphered response from server: \"%.1000s\"\n", buffer);
-		commonLogErrorAndDie(debugTxt);
+	if (receivedBytes < txtLen) {
+		sprintf(dbgTxt, "Invalid deciphered response from server: \"%.1000s\"\n", buffer);
+		commonLogErrorAndDie(dbgTxt);
 	}
 
 	if (DEBUG_ENABLE) {
-		sprintf(debugTxt, "\tReceived %u bytes!\n", receivedBytes);
-		commonDebugStep(debugTxt);
+		sprintf(dbgTxt, "\tReceived %u bytes!\n", receivedBytes);
+		commonDebugStep(dbgTxt);
 	}
 
 	/*=================================================== */
     /*-- Imprimir resposta ------------------------------ */
 	
 	puts(buffer);
-	close(sock);
+	close(socketFD);
 	exit(EXIT_SUCCESS);
 }

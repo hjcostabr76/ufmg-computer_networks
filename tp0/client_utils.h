@@ -1,5 +1,28 @@
 #pragma once
 
+#include <time.h>
+
+/**
+ * TODO: 2021-05-31 - ADD Descricao
+ */
+enum ClientFooEnum {
+    CLI_SEND_PARAM_NUM = 1,
+    CLI_SEND_PARAM_STR
+};
+
+/**
+ * TODO: 2021-05-31 - ADD Descricao
+ */
+void clientSendParam(
+	const int socketFD,
+	char *buffer,
+	const char *valueToSend,
+	const struct timeval *timeout,
+	const enum ClientFooEnum varType,
+	const int opNum,
+	const short int mustWaitForAnswer
+);
+
 /**
  * TODO: 2021-05-31 - ADD Descricao
  */

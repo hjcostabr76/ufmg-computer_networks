@@ -38,6 +38,7 @@ void *threadClientConnectionHandler(void *data);
  * [server] Accept -> (Gera socket do cliente)
  * 
  * TODO: 2021-06-02 - Resolver todo's
+ * TODO: 2021-06-04 - Abstrair operacao de bind
  * 
  */
 int main(int argc, char **argv) {
@@ -55,14 +56,12 @@ int main(int argc, char **argv) {
     /*=================================================== */
     /*-- Receber porto ---------------------------------- */
 
-    // Estabelece endereco em que o servidor vai aguardar conexoes 
     commonDebugStep("Setting server address...\n");
     
     struct sockaddr_storage serverAddress;
     const char *serverPortStr = argv[1];
-    if (!serverInitSocket(serverPortStr, &serverAddress)) {
+    if (!serverInitSocket(serverPortStr, &serverAddress)) // Estabelece endereco em que o servidor vai aguardar conexoes 
         explainAndDie(argv);
-    }
 
     /*=================================================== */
     /*-- Criar socket para receber conexoes ------------- */
@@ -70,17 +69,15 @@ int main(int argc, char **argv) {
     commonDebugStep("Creating server socket...\n");
 
     int serverSocket = socket(serverAddress.ss_family, SOCK_STREAM, 0);
-    if (serverSocket == -1) {
+    if (serverSocket == -1)
         commonLogErrorAndDie("Failure as creating server socket [1]");
-    }
 
     // Evitar que porta utlizada numa execucao fique 02 min inativa apos sua conclusao
     commonDebugStep("Enabling server address reusing...\n");
 
     int enableAddressReusing = 1;
-    if (setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &enableAddressReusing, sizeof(int)) != 0) {
+    if (setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &enableAddressReusing, sizeof(int)) != 0)
         commonLogErrorAndDie("Failure as creating server socket [2]");
-    }
 
     // Define timeout de escuta
     commonDebugStep("Setting server listening timeout...\n");
@@ -89,9 +86,8 @@ int main(int argc, char **argv) {
     timeout.tv_sec = TIMEOUT_SECS;
     timeout.tv_usec = 0;
 
-    if (setsockopt(serverSocket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0) {
+    if (setsockopt(serverSocket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0)
         commonLogErrorAndDie("Failure as creating server socket [3]");
-    }
 
     /* ================================================== */
     /* -- Inicializar espera por conexoes --------------- */
@@ -99,15 +95,13 @@ int main(int argc, char **argv) {
     commonDebugStep("Binding server to it's address...\n");
 
     struct sockaddr *_address = (struct sockaddr *)(&serverAddress);
-    if (bind(serverSocket, _address, sizeof(serverAddress)) != 0) {
+    if (bind(serverSocket, _address, sizeof(serverAddress)) != 0)
         commonLogErrorAndDie("Failure as biding server socket");
-    }
 
     commonDebugStep("Starting to listen...\n");
 
-    if (listen(serverSocket, MAX_CONNECTIONS) != 0) {
+    if (listen(serverSocket, MAX_CONNECTIONS) != 0)
         commonLogErrorAndDie("Failure as starting server listening");
-    }
 
     if (DEBUG_ENABLE) {
         
@@ -128,19 +122,16 @@ int main(int argc, char **argv) {
 
         // Criar socket para receber conexoes de clientes
         struct sockaddr_storage clientAddress;
-        struct sockaddr *_clientAddress = (struct sockaddr *)(&clientAddress);
         socklen_t clientAddressLength = sizeof(clientAddress);
 
-        int clientSocket = accept(serverSocket, _clientAddress, &clientAddressLength);
-        if (clientSocket == -1) {
+        int clientSocket = accept(serverSocket, (struct sockaddr *)(&clientAddress), &clientAddressLength);
+        if (clientSocket == -1)
             commonLogErrorAndDie("Failure as trying to accept client connection");
-        }
 
         // Define dados para thread de tratamento da nova conexao
         struct ClientData *clientData = malloc(sizeof(*clientData));
-        if (!clientData) {
+        if (!clientData)
             commonLogErrorAndDie("Failure as trying to set new client connection data");
-        }
 
         clientData->socket = clientSocket;
         memcpy(&(clientData->address), &clientAddress, sizeof(clientAddress));
@@ -169,7 +160,7 @@ void *threadClientConnectionHandler(void *data) {
     
     if (DEBUG_ENABLE) {
         char aux[200];
-        memset(aux, 0, SIZE_BUFFER);
+        memset(aux, 0, BUF_SIZE);
         sprintf(aux, "[thread] Connected to client at %s...\n", clientAddrStr);
         commonDebugStep(aux);
     }
@@ -177,10 +168,11 @@ void *threadClientConnectionHandler(void *data) {
     /* ================================================== */
     /* -- Receber tamanho do texto a ser decodificado --- */
     
-    char buffer[SIZE_BUFFER];
+    char buffer[BUF_SIZE];
+
     commonDebugStep("[thread] Receiving text length...\n");
     
-    memset(buffer, 0, SIZE_BUFFER);
+    memset(buffer, 0, BUF_SIZE);
     int bytesToReceive = sizeof(uint32_t);
     short int receivingStatus = serverReceiveParam(clientData->socket, buffer, bytesToReceive, RCV_VALIDATION_NUMERIC);
 
@@ -211,7 +203,7 @@ void *threadClientConnectionHandler(void *data) {
     receivingStatus = serverReceiveParam(clientData->socket, buffer, bytesToReceive, RCV_VALIDATION_NUMERIC);
 
     if (receivingStatus == RCV_ERR_VALIDATION_STR) {
-        char aux[SIZE_BUFFER];
+        char aux[BUF_SIZE];
         sprintf(aux, "Invalid cipher key '%.400s' sent by client [%d]", buffer, receivingStatus);
         serverSendFailureResponse(clientData->socket, aux);
 
@@ -232,11 +224,11 @@ void *threadClientConnectionHandler(void *data) {
 
     commonDebugStep("[thread] Receiving ciphered text...\n");
     
-    memset(buffer, 0, SIZE_BUFFER);
+    memset(buffer, 0, BUF_SIZE);
     receivingStatus = serverReceiveParam(clientData->socket, buffer, txtLength, RCV_VALIDATION_LCASE);
 
     if (receivingStatus == RCV_ERR_VALIDATION_STR) {
-        char aux[SIZE_BUFFER];
+        char aux[BUF_SIZE];
         sprintf(aux, "Invalid ciphered text received: \"%.600s...\" [%d]", buffer, receivingStatus);
         serverSendFailureResponse(clientData->socket, aux);
 
@@ -245,7 +237,7 @@ void *threadClientConnectionHandler(void *data) {
     }
 
     if (DEBUG_ENABLE) {
-        char aux[SIZE_BUFFER];
+        char aux[BUF_SIZE];
         sprintf(aux, "\tCiphered text is: \"%.600s...\"\n", buffer);
         commonDebugStep(aux);
     }
