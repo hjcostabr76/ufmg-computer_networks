@@ -6,7 +6,6 @@
  * TODO: 2021-06-03 - ADD Descricao
  */
 void posixReceive(const int sock, char *buffer, unsigned *receivedBytesAcc);
-// void posixReceive(const int sock, char *buffer);
 
 /**
  * TODO: 2021-06-03 - ADD Descricao
