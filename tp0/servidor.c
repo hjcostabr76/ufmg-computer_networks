@@ -13,13 +13,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#define MAX_CONNECTIONS 2
-
-struct ClientData {
-    int socket;
-    struct sockaddr_storage address;
-    struct timeval timeout;
-};
+#define MAX_CONNECTIONS 20
 
 void explainAndDie(char **argv) {
     printf("\nInvalid Input\n");
@@ -91,7 +85,7 @@ int main(int argc, char **argv) {
         memcpy(&(clientData->timeout), &timeout, sizeof(timeout));
 
         // Inicia nova thread para tratar a nova conexao
-        pthread_t tid; // Thread ID
+        pthread_t tid;
         pthread_create(&tid, NULL, threadClientConnectionHandler, clientData);
     }
 
@@ -100,8 +94,8 @@ int main(int argc, char **argv) {
 
 void *threadClientConnectionHandler(void *threadInput) {
 
-    commonDebugStep("\n[thread] Starting...\n");
-
+    commonDebugStep("\n[thread] Starting new thread..\n");
+    
     // Avalia entrada
     struct ClientData *client = (struct ClientData *)threadInput;
     struct sockaddr *clientAddr = (struct sockaddr *)(&client->address);
@@ -122,7 +116,7 @@ void *threadClientConnectionHandler(void *threadInput) {
     
     commonDebugStep("[thread] Receiving text length...\n");
     int bytesToReceive = sizeof(uint32_t);
-    serverRecvParam(client->socket, buffer, bytesToReceive, RCV_VALIDATION_NUMERIC, &client->timeout, "text length");
+    serverRecvParam(client, buffer, bytesToReceive, RCV_VALIDATION_NUMERIC, "text length");
     const uint32_t txtLength = ntohl(atoi(buffer));
 
     if (DEBUG_ENABLE) {
@@ -134,7 +128,7 @@ void *threadClientConnectionHandler(void *threadInput) {
     // Receber chave da cifra
     commonDebugStep("[thread] Receiving cipher key...\n");
     bytesToReceive = sizeof(uint32_t);
-    serverRecvParam(client->socket, buffer, bytesToReceive, RCV_VALIDATION_NUMERIC, &client->timeout, "cipher key");
+    serverRecvParam(client, buffer, bytesToReceive, RCV_VALIDATION_NUMERIC, "cipher key");
     const uint32_t cipherKey = htonl(atoi(buffer));
 
     if (DEBUG_ENABLE) {
@@ -146,7 +140,7 @@ void *threadClientConnectionHandler(void *threadInput) {
     // Receber texto cifrado
     commonDebugStep("[thread] Receiving ciphered text...\n");
     bytesToReceive = txtLength;
-    serverRecvParam(client->socket, buffer, bytesToReceive, RCV_VALIDATION_LCASE, &client->timeout, "ciphered text");
+    serverRecvParam(client, buffer, bytesToReceive, RCV_VALIDATION_LCASE, "ciphered text");
     
     if (DEBUG_ENABLE) {
         char aux[BUF_SIZE];

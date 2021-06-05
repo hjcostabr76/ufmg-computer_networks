@@ -16,14 +16,14 @@ int posixConnect(const int port, const char *addrStr, const struct timeval *time
 /**
  * TODO: 2021-06-03 - ADD Descricao
  */
-void posixRecv(const int socketFD, char *buffer, unsigned *recvBytesAcc, struct timeval *timeout);
+ssize_t posixRecv(const int socketFD, char *buffer, struct timeval *timeout);
 
 /**
  * TODO: 2021-06-03 - ADD Descricao
  */
-int posixSend(const int socketFD, const char *buffer, const int bytesToSend, struct timeval *timeout);
+short int posixSend(const int socketFD, const char *buffer, const unsigned bytesToSend, struct timeval *timeout);
 
 /**
  * TODO: 2021-06-03 - ADD Descricao
  */
-int posixAddressToString(const struct sockaddr *addr, char *addrStr);
+short int posixAddressToString(const struct sockaddr *addr, char *addrStr);

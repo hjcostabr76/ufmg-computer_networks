@@ -8,9 +8,9 @@
 void clientSendNumericParam(
 	const int socketFD,
 	char *buffer,
-	const int valueToSend,
+	const uint32_t valueToSend,
 	struct timeval *timeout,
-	const int opNum
+	const char *opLabel
 );
 
 /**

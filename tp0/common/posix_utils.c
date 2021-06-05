@@ -9,6 +9,11 @@
 #include <sys/select.h>
 #include <errno.h>
 
+#include <unistd.h>
+#include <stdio.h>
+
+#include<fcntl.h>
+
 enum FdActionEnum { FD_ACTION_RD = 10, FD_ACTION_WT };
 
 /**
@@ -20,7 +25,7 @@ int posixIsActionAvailable(int socketFD, const enum FdActionEnum action, struct 
 		commonLogErrorAndDie("Invalid arguments for action availability check");
 
 	while (1) {
-		
+
 		fd_set readFds;
 		FD_ZERO(&readFds);
 
@@ -66,8 +71,9 @@ int posixListen(const int port, const struct timeval *timeout, const int maxConn
         commonLogErrorAndDie("Failure as creating listening socket [2]");
 
 	// Define timeout de escuta
-    if (setsockopt(socketFD, SOL_SOCKET, SO_RCVTIMEO, timeout, sizeof(timeout)) != 0)
+    if (setsockopt(socketFD, SOL_SOCKET, SO_RCVTIMEO, timeout, sizeof(*timeout)) != 0) {
         commonLogErrorAndDie("Failure as creating listening socket [3]");
+	}
 
 	// Iniciar escuta
 	struct sockaddr_in addr;
@@ -77,11 +83,13 @@ int posixListen(const int port, const struct timeval *timeout, const int maxConn
     addr.sin_addr.s_addr = INADDR_ANY; // Bind ocorre em qualquer endereco disponivel na maquina
     addr.sin_port = htons(port); // Host to network short
 
-    if (bind(socketFD, (struct sockaddr *)(&addr), sizeof(addr)) != 0)
+    if (bind(socketFD, (struct sockaddr *)(&addr), sizeof(addr)) != 0) {
         commonLogErrorAndDie("Failure as biding listening socket");
-
-    if (listen(socketFD, maxConnections) != 0)
+	}
+    
+	if (listen(socketFD, maxConnections) != 0) {
         commonLogErrorAndDie("Failure as starting to listen");
+	}
 
 	posixAddressToString((struct sockaddr *)&addr, boundAddrStr);
 	return socketFD;
@@ -103,7 +111,7 @@ int posixConnect(const int port, const char *addrStr, const struct timeval *time
 	if (socketFD == -1)
 		commonLogErrorAndDie("Failure as creating connection socket [1]");
 
-	if (setsockopt(socketFD, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0)
+	if (setsockopt(socketFD, SOL_SOCKET, SO_RCVTIMEO, timeout, sizeof(*timeout)) != 0)
 		commonLogErrorAndDie("Failure as creating connection socket [2]");
 
 	// Cria conexao
@@ -119,28 +127,48 @@ int posixConnect(const int port, const char *addrStr, const struct timeval *time
 	return socketFD;
 }
 
-void posixRecv(const int socketFD, char *buffer, unsigned *recvBytesAcc, struct timeval *timeout) {
+ssize_t posixRecv(const int socketFD, char *buffer, struct timeval *timeout) {
+
+	size_t acc = 0;
+	fcntl(socketFD, F_SETFL, O_NONBLOCK);
+
 	while (1) {
 		
-		size_t receivedBytes = 0;
-		if (posixIsActionAvailable(socketFD, FD_ACTION_RD, timeout))
-			receivedBytes = recv(socketFD, buffer + *recvBytesAcc, BUF_SIZE - *recvBytesAcc, MSG_DONTWAIT | MSG_OOB);
+		ssize_t receivedBytes = 0;
+		if (!posixIsActionAvailable(socketFD, FD_ACTION_RD, timeout))
+			return acc;
 
-		if (receivedBytes < 1)
-			break;
+		receivedBytes = recv(socketFD, buffer + acc, BUF_SIZE - acc, MSG_DONTWAIT);
+		if (receivedBytes == -1)
+			return -1;
 
-		*recvBytesAcc += receivedBytes;
+		if (receivedBytes == 0)
+			return acc;
+
+		acc += receivedBytes;
 	}
 }
 
-int posixSend(const int socketFD, const char *buffer, const int bytesToSend, struct timeval *timeout) {
-	size_t sentBytes = 0;
-	if (posixIsActionAvailable(socketFD, FD_ACTION_WT, timeout))
-		sentBytes = send(socketFD, buffer, bytesToSend + 1, MSG_DONTWAIT | MSG_OOB);
-	return (sentBytes >= bytesToSend) ? 1 : 0;
+short int posixSend(const int socketFD, const char *buffer, const unsigned bytesToSend, struct timeval *timeout) {
+
+	ssize_t sentBytesAcc = 0;
+
+	while (sentBytesAcc < bytesToSend) {
+
+		if (!posixIsActionAvailable(socketFD, FD_ACTION_WT, timeout))
+			return 0;
+
+		ssize_t sentBytes = send(socketFD, buffer + sentBytesAcc, bytesToSend - sentBytesAcc, MSG_DONTWAIT);
+		if (sentBytes == -1)
+			return 0;
+		
+		sentBytesAcc += sentBytes;
+	}
+
+	return 1;
 }
 
-int posixAddressToString(const struct sockaddr *addr, char *addrStr) {
+short int posixAddressToString(const struct sockaddr *addr, char *addrStr) {
     struct sockaddr_in *addr4 = (struct sockaddr_in *)addr;
     return inet_ntop(AF_INET, &(addr4->sin_addr), addrStr, INET_ADDRSTRLEN + 1) ? 1 : 0;
 }

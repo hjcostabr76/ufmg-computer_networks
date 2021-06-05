@@ -58,19 +58,19 @@ int main(int argc, char **argv) {
 	// Enviar tamanho da string
 	char buffer[BUF_SIZE];
 	
-	commonDebugStep("Sending message length...\n");
+	commonDebugStep("Sending text length...\n");
 	const char *text = argv[3];
 	uint32_t txtLen = htonl(strlen(text));
-	clientSendNumericParam(socketFD, buffer, txtLen, &timeout, 1);
+	clientSendNumericParam(socketFD, buffer, txtLen, &timeout, "text length");
 
 	// Enviar chave da cifra
 	commonDebugStep("Sending encryption key...\n");
 	const char *cipherKeyStr = argv[4];
 	uint32_t cipherKey = htonl(atoi(cipherKeyStr));
-	clientSendNumericParam(socketFD, buffer, cipherKey, &timeout, 2);
+	clientSendNumericParam(socketFD, buffer, cipherKey, &timeout, "encryption key");
 
 	// Enviar string cifrada
-	commonDebugStep("Sending message...\n");
+	commonDebugStep("Sending ciphered text...\n");
 	memset(buffer, 0, BUF_SIZE);
 	caesarCipher(text, txtLen, buffer, cipherKey);
 
@@ -82,16 +82,14 @@ int main(int argc, char **argv) {
 	commonDebugStep("Waiting server answer...\n");
 	
 	memset(buffer, 0, BUF_SIZE);
-	unsigned receivedBytes = 0;
-	posixRecv(socketFD, buffer, &receivedBytes, &timeout);
-
+	size_t receivedBytes = posixRecv(socketFD, buffer, &timeout);
 	if (receivedBytes < txtLen) {
 		sprintf(dbgTxt, "Invalid deciphered response from server: \"%.1000s\"\n", buffer);
 		commonLogErrorAndDie(dbgTxt);
 	}
 
 	if (DEBUG_ENABLE) {
-		sprintf(dbgTxt, "\tReceived %u bytes!\n", receivedBytes);
+		sprintf(dbgTxt, "\tReceived %lu bytes!\n", receivedBytes);
 		commonDebugStep(dbgTxt);
 	}
 

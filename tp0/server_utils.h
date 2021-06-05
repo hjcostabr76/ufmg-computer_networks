@@ -1,7 +1,12 @@
 #pragma once
 
-#include <arpa/inet.h>
 #include <time.h>
+
+struct ClientData {
+    int socket;
+    struct sockaddr_storage address;
+    struct timeval timeout;
+};
 
 /**
  * TODO: 2021-06-04 - ADD Descricao
@@ -12,32 +17,15 @@ enum ServerRecvValidationEnum {
 };
 
 /**
- * TODO: 2021-06-04 - ADD Descricao
- */
-enum ServerRecvReturnEnum {
-    RCV_ERR_BYTES_COUNT = 1,
-    RCV_ERR_VALIDATION_PARAM,
-    RCV_ERR_VALIDATION_STR,
-    RCV_ERR_SUCCESS_RETURN,
-    RCV_SUCCESS
-};
-
-/**
  * TODO: 2021-06-03 - ADD Descricao
  */
 void serverRecvParam(
-    const int socketFD,
+    struct ClientData *client,
     char *buffer,
     const unsigned bytesToRecv,
     const enum ServerRecvValidationEnum validationType,
-    struct timeval *timeout,
     const char *opLabel
 );
-
-/**
- * TODO: 2021-06-03 - ADD Descricao
- */
-void serverSendFailureResponse(const int sock, char *errMsg, struct timeval *timeout);
 
 /**
  * TODO: 2021-06-03 - ADD Descricao

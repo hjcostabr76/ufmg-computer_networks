@@ -13,61 +13,33 @@
 #include <time.h>
 
 /**
- * NOTE: Funcao eh 'privada'
+ * NOTE: Funcao 'privada'
  */
-short int serverRecvParamAux(
-    const int socketFD,
-    char *buffer,
-    const unsigned bytesToRecv,
-    const enum ServerRecvValidationEnum validationType,
-    struct timeval *timeout
-) {
-
-    // Recebe valor do cliente
-    unsigned receivedBytes = 0;
-    posixRecv(socketFD, buffer, &receivedBytes, timeout);
-
-    // Validar: Contagem de butes
-    if (receivedBytes < bytesToRecv)
-        return RCV_ERR_BYTES_COUNT;
-
-    // Validar: Conteudo recebido
-    const int bufLen = sizeof(buffer);
-
-    switch (validationType) {
-        case RCV_VALIDATION_NUMERIC:
-            if (!stringValidateNumericString(buffer, bufLen))
-                return RCV_ERR_VALIDATION_STR;
-            break;
-        case RCV_VALIDATION_LCASE:
-            if (!stringValidateLCaseString(buffer, bufLen))
-                return RCV_ERR_VALIDATION_STR;
-            break;
-        default:
-            return RCV_ERR_VALIDATION_PARAM;
-    }
-    
-    // Notifica sucesso no recebimento
-    return posixSend(socketFD, "1", 1, timeout) ? RCV_SUCCESS : RCV_ERR_SUCCESS_RETURN;
+void serverCloseThreadOnError(const struct ClientData *client, const char *errMsg) {
+	close(client->socket);
+    perror("\nClosing thread because of failure");
+    puts("");
+    pthread_exit(NULL);
 }
 
-void serverSendFailureResponse(const int sock, char *errMsg, struct timeval *timeout) {
-	posixSend(sock, "0", 1, timeout);
-	close(sock);
-    pthread_exit(NULL);
-	commonLogErrorAndDie(errMsg);
+/**
+ * NOTE: Funcao 'privada'
+ */
+void serverSendFailureResponse(struct ClientData *client, const char *errMsg) {
+	posixSend(client->socket, "0", 1, &client->timeout);
+	serverCloseThreadOnError(client, errMsg);
 }
 
 int serverValidateInput(int argc, char **argv) {
 
 	if (argc != 2) {
-        commonDebugStep("ERROR: Invalid argc!\n");
+        commonDebugStep("Invalid argc!\n");
 		return 0;
     }
 
 	const char *portStr = argv[1];
 	if (!stringValidateNumericString(portStr, strlen(portStr))) {
-		commonDebugStep("ERROR: Invalid Port!\n");
+		commonDebugStep("Invalid Port!\n");
 		return 0;
 	}
 
@@ -75,24 +47,44 @@ int serverValidateInput(int argc, char **argv) {
 }
 
 void serverRecvParam(
-    const int socketFD,
+    struct ClientData *client,
     char *buffer,
     const unsigned bytesToRecv,
     const enum ServerRecvValidationEnum validationType,
-    struct timeval *timeout,
     const char *opLabel
 ) {
 
-    short int recvStatus = serverRecvParamAux(socketFD, buffer, bytesToRecv, RCV_VALIDATION_NUMERIC, timeout);
-    if (recvStatus != RCV_SUCCESS)
-        return;
+    char errMsg[BUF_SIZE];
 
-    char aux[BUF_SIZE];
+    // Valida parametros
+    if (validationType != RCV_VALIDATION_NUMERIC && validationType != RCV_VALIDATION_LCASE) {
+        sprintf(errMsg, "Failure as receiving data from client [%s] [1]", opLabel);
+        serverCloseThreadOnError(client, errMsg);
+    }
+    
+    // Recebe valor do cliente
+    size_t receivedBytes = posixRecv(client->socket, buffer, &client->timeout);
+    if (receivedBytes == -1) {
+        sprintf(errMsg, "Failure as receiving data from client [%s] [2]", opLabel);
+        serverCloseThreadOnError(client, errMsg);
+    }
 
-    if (recvStatus == RCV_ERR_VALIDATION_STR)
-        sprintf(aux, "Invalid data sent by client [%d / %s]: \"%.800s\"", recvStatus, opLabel, buffer);
-    else
-        sprintf(aux, "Failure as trying to get data from client [%d / %s]: \"%.800s\"", recvStatus, opLabel, buffer);
+    // Validar: Contagem de bytes
+    if (receivedBytes < bytesToRecv) {
+        sprintf(errMsg, "Failure as receiving data from client [%s] [3]", opLabel);
+        serverCloseThreadOnError(client, errMsg);
+    }
 
-    serverSendFailureResponse(socketFD, aux, timeout);
+    // Validar: Conteudo recebido
+    if ((validationType == RCV_VALIDATION_NUMERIC && !stringValidateNumericString(buffer, strlen(buffer)))
+        || (validationType == RCV_VALIDATION_LCASE && !stringValidateLCaseString(buffer, strlen(buffer)))
+    ) {
+        sprintf(errMsg, "Invalid data sent by client [%s]: \"%.800s\"", opLabel, buffer);
+        serverSendFailureResponse(client, errMsg);
+    }
+
+    if (!posixSend(client->socket, "1", 1, &client->timeout)) {
+        sprintf(errMsg, "Failure as sending receiving confirmation to client [%s]", opLabel);
+        serverSendFailureResponse(client, errMsg);
+    }
 }
