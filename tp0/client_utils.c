@@ -47,28 +47,38 @@ void clientSendNumericParam(
 ) {
 
 	char errMsg[BUF_SIZE];
+	memset(errMsg, 0, BUF_SIZE);
 
 	// Preparar conteudo do buffer
 	memset(buffer, 0, BUF_SIZE);
 	snprintf(buffer, BUF_SIZE, "%u", valueToSend);
 
 	// Enviar parametro
-	int bytesToSend = strlen(buffer) + 1;
-	if (!posixSend(socketFD, buffer, bytesToSend, timeout)) {
+	if (!posixSend(socketFD, buffer, strlen(buffer) + 1, timeout)) {
 		sprintf(errMsg, "Failure as sending data to server [%s] [1]", opLabel);
 		commonLogErrorAndDie(errMsg);
 	}
 
-	// Receber retorno
-	memset(buffer, 0, BUF_SIZE);
+	// Validar recebimento
+	clientValidateServerReceiving(socketFD, timeout, opLabel);
+}
+
+void clientValidateServerReceiving(const int socketFD, struct timeval *timeout, const char *opLabel) {
+
+	char buffer[10];
+	memset(buffer, 0, 10);
+	
+	char errMsg[BUF_SIZE];
+	memset(errMsg, 0, BUF_SIZE);
+
 	ssize_t receivedBytes = posixRecv(socketFD, buffer, timeout);
 	if (receivedBytes == -1) {
-		sprintf(errMsg, "Failure as sending data to server [%s] [2]", opLabel);
+		sprintf(errMsg, "Server sent no success confirmation [1] [%s] errno: %d", opLabel, errno);
 		commonLogErrorAndDie(errMsg);
 	}
 
 	if (strcmp(buffer, "1") != 0) {
-		sprintf(errMsg, "Server sent no success confirmation [%s]: %d - \"%.500s\"", opLabel, errno, buffer);
+		sprintf(errMsg, "Server sent no success confirmation [2] [%s] errno: %d | buffer: \"%.500s\"", opLabel, errno, buffer);
 		commonLogErrorAndDie(errMsg);
 	}
 }

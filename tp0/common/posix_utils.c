@@ -12,7 +12,7 @@
 #include <unistd.h>
 #include <stdio.h>
 
-#include<fcntl.h>
+// #include<fcntl.h>
 
 enum FdActionEnum { FD_ACTION_RD = 10, FD_ACTION_WT };
 
@@ -39,9 +39,12 @@ int posixIsActionAvailable(int socketFD, const enum FdActionEnum action, struct 
 		else
 			commonLogErrorAndDie("Invalid action type for availability check");
 
-		int isReady = select(socketFD + 1, &readFds, &writeFds, NULL, timeout);
-		if (isReady > 0)
-			return 1;
+		int isReady = select(socketFD + 1, &readFds, &writeFds, NULL, timeout);	
+		if (isReady > 0) {
+			if ((action == FD_ACTION_RD && FD_ISSET(socketFD, &readFds)) || (action == FD_ACTION_WT && FD_ISSET(socketFD, &writeFds)))
+				return 1;
+			commonLogErrorAndDie("Availability check: Something wrong isn't right... D:");
+		}
 
 		if (isReady == 0) // Timeout
 			return 0;
@@ -130,42 +133,43 @@ int posixConnect(const int port, const char *addrStr, const struct timeval *time
 ssize_t posixRecv(const int socketFD, char *buffer, struct timeval *timeout) {
 
 	size_t acc = 0;
-	fcntl(socketFD, F_SETFL, O_NONBLOCK);
 
 	while (1) {
 		
-		ssize_t receivedBytes = 0;
-		if (!posixIsActionAvailable(socketFD, FD_ACTION_RD, timeout))
-			return acc;
+		ssize_t recvReturn = 0;
+		const short int haveExpired = posixIsActionAvailable(socketFD, FD_ACTION_RD, timeout);
 
-		receivedBytes = recv(socketFD, buffer + acc, BUF_SIZE - acc, MSG_DONTWAIT);
-		if (receivedBytes == -1)
-			return -1;
+		recvReturn = recv(socketFD, buffer + acc, BUF_SIZE - acc, MSG_DONTWAIT);
+		if (recvReturn == 0)
+			break;
 
-		if (receivedBytes == 0)
-			return acc;
+		if (recvReturn == -1)
+			return (errno == EAGAIN || errno == EWOULDBLOCK) ? acc : -1;
 
-		acc += receivedBytes;
+		acc += recvReturn;
+		if (haveExpired)
+			break;
 	}
+
+	return acc;
 }
 
 short int posixSend(const int socketFD, const char *buffer, const unsigned bytesToSend, struct timeval *timeout) {
 
-	ssize_t sentBytesAcc = 0;
+	ssize_t acc = 0;
 
-	while (sentBytesAcc < bytesToSend) {
+	while (1) {
 
-		if (!posixIsActionAvailable(socketFD, FD_ACTION_WT, timeout))
-			return 0;
-
-		ssize_t sentBytes = send(socketFD, buffer + sentBytesAcc, bytesToSend - sentBytesAcc, MSG_DONTWAIT);
+		ssize_t sentBytes = send(socketFD, buffer + acc, bytesToSend - acc, 0/* MSG_DONTWAIT */);
 		if (sentBytes == -1)
 			return 0;
-		
-		sentBytesAcc += sentBytes;
+
+		acc += sentBytes;
+		if (sentBytes == 0)
+			break;
 	}
 
-	return 1;
+	return (acc >= bytesToSend) ? 1 : 0;
 }
 
 short int posixAddressToString(const struct sockaddr *addr, char *addrStr) {

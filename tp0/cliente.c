@@ -42,13 +42,14 @@ int main(int argc, char **argv) {
 	// Conectar com servidor
 	commonDebugStep("Creating socket...\n");
 
-	struct timeval timeout;
-    timeout.tv_sec = TIMEOUT_SECS;
-    timeout.tv_usec = 0;
+	struct timeval connTimeout;
+    memset(&connTimeout, 0, sizeof(connTimeout));
+	connTimeout.tv_sec = TIMEOUT_CONN_SECS;
+    connTimeout.tv_usec = 0;
 
 	const char *addrStr = argv[1];
 	const char *portStr = argv[2];
-	int socketFD = posixConnect(atoi(portStr), addrStr, &timeout);
+	int socketFD = posixConnect(atoi(portStr), addrStr, &connTimeout);
 	
 	if (DEBUG_ENABLE) {
 		sprintf(dbgTxt, "\nConnected to %s:%s\n", addrStr, portStr);
@@ -57,32 +58,39 @@ int main(int argc, char **argv) {
 
 	// Enviar tamanho da string
 	char buffer[BUF_SIZE];
+	memset(buffer, 0, BUF_SIZE);
+
+	struct timeval transferTimeout;
+	memset(&transferTimeout, 0, sizeof(transferTimeout));
+    transferTimeout.tv_sec = TIMEOUT_TRANSFER_SECS;
+    transferTimeout.tv_usec = 0;
 	
 	commonDebugStep("Sending text length...\n");
 	const char *text = argv[3];
-	uint32_t txtLen = htonl(strlen(text));
-	clientSendNumericParam(socketFD, buffer, txtLen, &timeout, "text length");
+	uint32_t txtLen = strlen(text);
+	clientSendNumericParam(socketFD, buffer, htonl(txtLen), &transferTimeout, "text length");
 
 	// Enviar chave da cifra
 	commonDebugStep("Sending encryption key...\n");
 	const char *cipherKeyStr = argv[4];
-	uint32_t cipherKey = htonl(atoi(cipherKeyStr));
-	clientSendNumericParam(socketFD, buffer, cipherKey, &timeout, "encryption key");
+	uint32_t cipherKey = atoi(cipherKeyStr);
+	clientSendNumericParam(socketFD, buffer, htonl(cipherKey), &transferTimeout, "encryption key");
 
 	// Enviar string cifrada
 	commonDebugStep("Sending ciphered text...\n");
 	memset(buffer, 0, BUF_SIZE);
 	caesarCipher(text, txtLen, buffer, cipherKey);
-
+	
 	unsigned bytesToSend = strlen(buffer) + 1;
-	if (!posixSend(socketFD, buffer, bytesToSend, &timeout))
+	if (!posixSend(socketFD, buffer, bytesToSend, &transferTimeout))
 		commonLogErrorAndDie("Failure as sending ciphered text");
+	clientValidateServerReceiving(socketFD, &transferTimeout, "ciphered text");
 
 	// Receber resposta (string desencriptografada)
 	commonDebugStep("Waiting server answer...\n");
 	
 	memset(buffer, 0, BUF_SIZE);
-	size_t receivedBytes = posixRecv(socketFD, buffer, &timeout);
+	size_t receivedBytes = posixRecv(socketFD, buffer, &transferTimeout);
 	if (receivedBytes < txtLen) {
 		sprintf(dbgTxt, "Invalid deciphered response from server: \"%.1000s\"\n", buffer);
 		commonLogErrorAndDie(dbgTxt);

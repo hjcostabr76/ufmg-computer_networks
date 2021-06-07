@@ -2,6 +2,9 @@
 
 const int RANGE = ASCII_LC_LETTER_LAST - ASCII_LC_LETTER_FIRST;
 
+/**
+ * FIXME: 2021-06-07 - Algo errado nao esta certo...
+ */
 void caesarCipher(const char *text, const int textLength, char *cipheredText, int key) {
 
 	for (int i = 0; i < textLength; i++) {
@@ -19,6 +22,9 @@ void caesarCipher(const char *text, const int textLength, char *cipheredText, in
 	cipheredText[textLength] = '\0';
 }
 
+/**
+ * FIXME: 2021-06-07 - Algo errado nao esta certo...
+ */
 void caesarDecipher(const char *cipheredText, const int textLength, char *text, int key) {
 
 	for (int i = 0; i < textLength; i++) {

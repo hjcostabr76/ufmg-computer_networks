@@ -17,8 +17,8 @@
  */
 void serverCloseThreadOnError(const struct ClientData *client, const char *errMsg) {
 	close(client->socket);
-    perror("\nClosing thread because of failure");
-    puts("");
+    perror(errMsg);
+    puts("\nClosing thread because of failure... :(\n");
     pthread_exit(NULL);
 }
 
@@ -83,7 +83,8 @@ void serverRecvParam(
         serverSendFailureResponse(client, errMsg);
     }
 
-    if (!posixSend(client->socket, "1", 1, &client->timeout)) {
+    const char *aux = "1";
+    if (!posixSend(client->socket, aux, 1, &client->timeout)) {
         sprintf(errMsg, "Failure as sending receiving confirmation to client [%s]", opLabel);
         serverSendFailureResponse(client, errMsg);
     }

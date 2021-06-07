@@ -1,7 +1,9 @@
 #pragma once
 
 #define DEBUG_ENABLE 1
-#define TIMEOUT_SECS 15
+
+#define TIMEOUT_CONN_SECS 15
+#define TIMEOUT_TRANSFER_SECS 4
 
 #define BUF_SIZE 1024
 #define SIZE_NUMBER_STR 10
