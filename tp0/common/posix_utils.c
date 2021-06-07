@@ -39,18 +39,24 @@ int posixIsActionAvailable(int socketFD, const enum FdActionEnum action, struct 
 		else
 			commonLogErrorAndDie("Invalid action type for availability check");
 
-		int isReady = select(socketFD + 1, &readFds, &writeFds, NULL, timeout);	
-		if (isReady > 0) {
-			if ((action == FD_ACTION_RD && FD_ISSET(socketFD, &readFds)) || (action == FD_ACTION_WT && FD_ISSET(socketFD, &writeFds)))
-				return 1;
-			commonLogErrorAndDie("Availability check: Something wrong isn't right... D:");
+		int selReturn = select(socketFD + 1, &readFds, &writeFds, NULL, timeout);
+		
+		if (selReturn == 0) // Timeout
+			return 0;	
+		
+		if (selReturn == -1) {
+			if (errno != EINTR) // Erro: Interrupted System Call | TODO: Pq esse erro eh ignorado?
+				commonLogErrorAndDie("Failure as running availability check");
+			continue;
 		}
-
-		if (isReady == 0) // Timeout
-			return 0;
-
-		if (errno != EINTR) // Erro: Interrupted System Call | TODO: Pq esse erro eh ignorado?
-			commonLogErrorAndDie("Failure as running availability check");
+		
+		if (selReturn != 1
+			|| (action == FD_ACTION_RD && FD_ISSET(socketFD, &readFds) == 0)
+			|| (action == FD_ACTION_WT && FD_ISSET(socketFD, &writeFds) == 0)
+		)
+			commonLogErrorAndDie("Availability check: Something wrong isn't right... D:");
+		
+		return 1;
 	}
 }
 
@@ -132,26 +138,19 @@ int posixConnect(const int port, const char *addrStr, const struct timeval *time
 
 ssize_t posixRecv(const int socketFD, char *buffer, struct timeval *timeout) {
 
-	size_t acc = 0;
-
-	while (1) {
+	const int haveExpired = !posixIsActionAvailable(socketFD, FD_ACTION_RD, timeout);
+	if (haveExpired)
+		return 0;
 		
-		ssize_t recvReturn = 0;
-		const short int haveExpired = posixIsActionAvailable(socketFD, FD_ACTION_RD, timeout);
+	ssize_t recvReturn = recv(socketFD, buffer, sizeof(buffer), MSG_DONTWAIT);
+	if (recvReturn > 0)
+		return recvReturn;
+	
+	const int isTimeoutError = recvReturn == -1 && (errno == EAGAIN || errno == EWOULDBLOCK);
+	if (isTimeoutError)
+		return 0;
 
-		recvReturn = recv(socketFD, buffer + acc, BUF_SIZE - acc, MSG_DONTWAIT);
-		if (recvReturn == 0)
-			break;
-
-		if (recvReturn == -1)
-			return (errno == EAGAIN || errno == EWOULDBLOCK) ? acc : -1;
-
-		acc += recvReturn;
-		if (haveExpired)
-			break;
-	}
-
-	return acc;
+	return -1; // erro...
 }
 
 short int posixSend(const int socketFD, const char *buffer, const unsigned bytesToSend, struct timeval *timeout) {
@@ -159,14 +158,15 @@ short int posixSend(const int socketFD, const char *buffer, const unsigned bytes
 	ssize_t acc = 0;
 
 	while (1) {
-
+		
 		ssize_t sentBytes = send(socketFD, buffer + acc, bytesToSend - acc, 0/* MSG_DONTWAIT */);
 		if (sentBytes == -1)
 			return 0;
-
-		acc += sentBytes;
+		
 		if (sentBytes == 0)
 			break;
+
+		acc += sentBytes;
 	}
 
 	return (acc >= bytesToSend) ? 1 : 0;
