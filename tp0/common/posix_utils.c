@@ -12,8 +12,6 @@
 #include <unistd.h>
 #include <stdio.h>
 
-// #include<fcntl.h>
-
 enum FdActionEnum { FD_ACTION_RD = 10, FD_ACTION_WT };
 
 /**
@@ -138,19 +136,26 @@ int posixConnect(const int port, const char *addrStr, const struct timeval *time
 
 ssize_t posixRecv(const int socketFD, char *buffer, struct timeval *timeout) {
 
-	const int haveExpired = !posixIsActionAvailable(socketFD, FD_ACTION_RD, timeout);
-	if (haveExpired)
-		return 0;
-		
-	ssize_t recvReturn = recv(socketFD, buffer, sizeof(buffer), MSG_DONTWAIT);
-	if (recvReturn > 0)
-		return recvReturn;
-	
-	const int isTimeoutError = recvReturn == -1 && (errno == EAGAIN || errno == EWOULDBLOCK);
-	if (isTimeoutError)
-		return 0;
+	size_t acc = 0;
 
-	return -1; // erro...
+	while (1) {
+		
+		ssize_t recvReturn = 0;
+		const short int haveExpired = !posixIsActionAvailable(socketFD, FD_ACTION_RD, timeout);
+
+		recvReturn = recv(socketFD, buffer + acc, BUF_SIZE - acc, MSG_DONTWAIT);
+		if (recvReturn == 0)
+			break;
+
+		if (recvReturn == -1)
+			return (errno == EAGAIN || errno == EWOULDBLOCK) ? acc : -1;
+
+		acc += recvReturn;
+		if (!haveExpired)
+			break;
+	}
+
+	return acc;
 }
 
 short int posixSend(const int socketFD, const char *buffer, const unsigned bytesToSend, struct timeval *timeout) {

@@ -129,7 +129,7 @@ void *threadClientConnectionHandler(void *threadInput) {
     commonDebugStep("[thread] Receiving text length...\n");
     int bytesToReceive = sizeof(uint32_t);
     serverRecvParam(client, buffer, bytesToReceive, RCV_VALIDATION_NUMERIC, "text length");
-    const uint32_t txtLength = ntohl(atoi(buffer));
+    const uint32_t txtLength = htonl(atoi(buffer));
 
     if (DEBUG_ENABLE) {
         char aux[200];
@@ -167,7 +167,7 @@ void *threadClientConnectionHandler(void *threadInput) {
 	
     char text[txtLength];
 	memset(text, 0, txtLength);
-	caesarDecipher(buffer, txtLength, text, txtLength);
+	caesarDecipher(buffer, txtLength, text, cipherKey);
     commonDebugStep("\tText successfully decrypted:\n");
     
     puts(text);

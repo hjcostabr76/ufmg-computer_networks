@@ -51,7 +51,7 @@ void clientSendNumericParam(
 
 	// Preparar conteudo do buffer
 	memset(buffer, 0, BUF_SIZE);
-	snprintf(buffer, BUF_SIZE, "%u", valueToSend);
+	sprintf(buffer, "%u", valueToSend);
 
 	// Enviar parametro
 	if (!posixSend(socketFD, buffer, strlen(buffer) + 1, timeout)) {
