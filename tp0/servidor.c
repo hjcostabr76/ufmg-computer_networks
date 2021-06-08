@@ -1,6 +1,6 @@
-#include "common/common.h"
-#include "common/caesar_cipher.h"
-#include "common/posix_utils.h"
+#include "common.h"
+#include "caesar_cipher.h"
+#include "posix_utils.h"
 #include "server_utils.h"
 
 #include <stdio.h>

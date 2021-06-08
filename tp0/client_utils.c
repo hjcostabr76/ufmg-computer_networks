@@ -1,6 +1,6 @@
-#include "common/common.h"
-#include "common/string_utils.h"
-#include "common/posix_utils.h"
+#include "common.h"
+#include "string_utils.h"
+#include "posix_utils.h"
 #include "client_utils.h"
 
 #include <stdlib.h>
