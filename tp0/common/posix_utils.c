@@ -64,13 +64,13 @@ int posixIsActionAvailable(int socketFD, const enum FdActionEnum action, struct 
  *
  * NOTE: Funcao 'privada'
  */
-int getAddrIPVersion(struct in_addr *addrNumber, const char *addrStr) {
+int getAddrIPVersion(struct sockaddr_storage *addr, const char *addrStr) {
 
-	int isIpv4 = inet_pton(AF_INET, addrStr, &addrNumber);
+	int isIpv4 = inet_pton(AF_INET, addrStr, &addr);
 	if (isIpv4)
 		return AF_INET;
 
-	int isIpv6 = inet_pton(AF_INET6, addrStr, &addrNumber);
+	int isIpv6 = inet_pton(AF_INET6, addrStr, &addr);
 	if (isIpv6)
 		return AF_INET6;
 
@@ -100,7 +100,6 @@ void posixListenIpv4(const int socketFD, const int port, const struct sockaddr_s
 		commonLogErrorAndDie("Failure as starting to listen [ipv4]");
 
 	posixAddressToString((struct sockaddr *)addr, boundAddrStr);
-	printf("boundAddr: %s\n", boundAddrStr);
 }
 
 /**
@@ -126,7 +125,6 @@ void posixListenIpv6(const int socketFD, const int port, const struct sockaddr_s
 		commonLogErrorAndDie("Failure as starting to listen [ipv6]");
 
 	posixAddressToString((struct sockaddr *)addr, boundAddrStr);
-	printf("boundAddr: %s\n", boundAddrStr);
 }
 
 int posixListen(const int port, const int addrFamily, const struct timeval *timeout, const int maxConnections, char *boundAddrStr) {
@@ -155,6 +153,13 @@ int posixListen(const int port, const int addrFamily, const struct timeval *time
     if (setsockopt(socketFD, SOL_SOCKET, SO_RCVTIMEO, timeout, sizeof(*timeout)) != 0)
 		commonLogErrorAndDie("Failure as creating listening socket [3]");
 
+	// Habilitar conexoes ipv4 em sockets ipv6
+	if (addrFamily == AF_INET6) {
+		int no = 0;
+		if (setsockopt(socketFD, IPPROTO_IPV6, IPV6_V6ONLY, (void *)&no, sizeof(no)) != 0)
+        	commonLogErrorAndDie("Failure trying to enable ipv4 clients to ipv6 server");
+	}
+
 	// Conclui distinguindo por tipo de IP
 	struct sockaddr_storage storage;
 	memset(&storage, 0, sizeof(storage));
@@ -173,8 +178,8 @@ int posixConnect(const int port, const char *addrStr, const struct timeval *time
 	if (!port)
 		commonLogErrorAndDie("invalid connection port");
 
-	struct in_addr addrNumber; // Esse struct contem apenas 01 numero mesmo
-	const int addrFamily = getAddrIPVersion(&addrNumber, addrStr);
+	struct sockaddr_storage addrStorage; // Esse struct contem apenas 01 numero mesmo
+	const int addrFamily = getAddrIPVersion(&addrStorage, addrStr);
 	if (addrFamily == -1)
 		commonLogErrorAndDie("invalid connection address");
 
@@ -187,14 +192,30 @@ int posixConnect(const int port, const char *addrStr, const struct timeval *time
 		commonLogErrorAndDie("Failure as creating connection socket [2]");
 
 	// Cria conexao
-	struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = addrFamily;
-    addr.sin_port = htons(port);
-    addr.sin_addr = addrNumber;
+	if (addrFamily == AF_INET) {
+		
+		struct sockaddr_in addr4;
+		memset(&addr4, 0, sizeof(addr4));
+		
+		addr4.sin_family = addrFamily;
+		addr4.sin_port = htons(port);
+		addr4.sin_addr = *(struct in_addr *)&addrStorage;
 
-	if (connect(socketFD, (struct sockaddr *)&addr, sizeof(addr)) != 0)
-		commonLogErrorAndDie("Failure as trying to connect");
+		if (connect(socketFD, (struct sockaddr *)&addr4, sizeof(addr4)) != 0)
+			commonLogErrorAndDie("Failure as trying to connect [ipv4]");
+
+	} else {
+
+		struct sockaddr_in6 addr6;
+		memset(&addr6, 0, sizeof(addr6));
+		
+		addr6.sin6_family = addrFamily;
+		addr6.sin6_port = htons(port);
+		addr6.sin6_addr = *(struct in6_addr *)&addrStorage;
+
+		if (connect(socketFD, (struct sockaddr *)&addr6, sizeof(addr6)) != 0)
+			commonLogErrorAndDie("Failure as trying to connect [ipv6]");
+	}
 
 	return socketFD;
 }

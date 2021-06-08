@@ -74,32 +74,14 @@ int main(int argc, char **argv) {
     pthread_t tid6;
     pthread_create(&tid6, NULL, threadListener, threadData6);
 
-    // Inicializa ipv4
-    commonDebugStep("Creating server socket [ipv4]...\n");
-    char boundAddr4[200];
-    memset(boundAddr4, 0, 200);
-    int socket4 = posixListen(port, AF_INET, &timeoutConn, MAX_CONNECTIONS, boundAddr4);
-    
-    commonDebugStep("Starting to listen for ipv4 connections...\n");
-    struct ConnThreadData *threadData4 = malloc(sizeof(*threadData4));
-    if (!threadData4)
-        commonLogErrorAndDie("Failure as trying to set new listener thread [ipv4]");
-
-    threadData4->socket = socket4;
-    threadData4->addrFamily = AF_INET;
-
-    pthread_t tid4;
-    pthread_create(&tid4, NULL, threadListener, threadData4);
-
     // Notifica sucesso na inicializacao
     if (DEBUG_ENABLE) {
         memset(notificationMsg, 0, notificationMsgLen);
-        sprintf(notificationMsg, "\nAll set! Server is bound to addresses %s:%d (ipv4) and %s:%d (ipv6)\nWaiting for connections...\n", boundAddr4, port, boundAddr6, port);
+        sprintf(notificationMsg, "\nAll set! Server is bound to %s:%d\nWaiting for connections...\n", boundAddr6, port);
         commonDebugStep(notificationMsg);
     }
 
     // Escuta atividade dos sockets
-    short int isSock4Up = 0;
     short int isSock6Up = 0;
 
     do {
@@ -107,16 +89,6 @@ int main(int argc, char **argv) {
         int testResult;
         int testValue;
         socklen_t len = sizeof(testValue);
-
-        // Avaliar socket ipv4
-        testResult = getsockopt(socket4, SOL_SOCKET, SO_ACCEPTCONN, &testValue, &len);
-        if (testResult != 0) {
-            if (errno != EINVAL) // Socket parou de escutar
-                commonLogErrorAndDie("Failure as trying to monitor socket status [ipv4]");
-            isSock4Up = 0;
-
-        } else
-            isSock4Up = testValue != 0;
 
         // Avaliar socket ipv6
         testResult = getsockopt(socket6, SOL_SOCKET, SO_ACCEPTCONN, &testValue, &len);
@@ -128,8 +100,9 @@ int main(int argc, char **argv) {
         } else
             isSock6Up = testValue != 0;
 
-    } while (isSock4Up || isSock6Up);
+    } while (isSock6Up);
 
+    commonDebugStep("\nAll listeners are shut down. Server is now disconnected\nBye o/\n");
     exit(EXIT_SUCCESS);
 }
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#define DEBUG_ENABLE 1
+#define DEBUG_ENABLE 0
 
 #define TIMEOUT_CONN_SECS 15
 #define TIMEOUT_TRANSFER_SECS 2
