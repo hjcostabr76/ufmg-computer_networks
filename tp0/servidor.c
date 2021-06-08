@@ -29,7 +29,6 @@ void explainAndDie(char **argv) {
 }
 
 void *threadClientConnHandler(void *data);
-void *threadListener(void *data);
 
 /**
  * ------------------------------------------------
@@ -61,18 +60,8 @@ int main(int argc, char **argv) {
     commonDebugStep("Creating server socket [ipv6]...\n");
     char boundAddr6[200];
     memset(boundAddr6, 0, 200);
-    int socket6 = posixListen(port, AF_INET6, &timeoutConn, MAX_CONNECTIONS, boundAddr6);
+    int serverSocket = posixListen(port, AF_INET6, &timeoutConn, MAX_CONNECTIONS, boundAddr6);
 
-    commonDebugStep("Starting to listen for ipv6 connections...\n");
-    struct ConnThreadData *threadData6 = malloc(sizeof(*threadData6));
-    if (!threadData6)
-        commonLogErrorAndDie("Failure as trying to set new listener thread [ipv6]");
-
-    threadData6->socket = socket6;
-    threadData6->addrFamily = AF_INET6;
-
-    pthread_t tid6;
-    pthread_create(&tid6, NULL, threadListener, threadData6);
 
     // Notifica sucesso na inicializacao
     if (DEBUG_ENABLE) {
@@ -81,81 +70,27 @@ int main(int argc, char **argv) {
         commonDebugStep(notificationMsg);
     }
 
-    // Escuta atividade dos sockets
-    short int isSock6Up = 0;
-
-    do {
-
-        int testResult;
-        int testValue;
-        socklen_t len = sizeof(testValue);
-
-        // Avaliar socket ipv6
-        testResult = getsockopt(socket6, SOL_SOCKET, SO_ACCEPTCONN, &testValue, &len);
-        if (testResult != 0) {
-            if (errno != EINVAL) // Socket parou de escutar
-                commonLogErrorAndDie("Failure as trying to monitor socket status [ipv6]");
-            isSock6Up = 0;
-
-        } else
-            isSock6Up = testValue != 0;
-
-    } while (isSock6Up);
-
-    commonDebugStep("\nAll listeners are shut down. Server is now disconnected\nBye o/\n");
-    exit(EXIT_SUCCESS);
-}
-
-/**
- * TODO: 2021-06-07 - ADD Descricao
- */
-void *threadListener(void *threadInput) {
-
-    commonDebugStep("\n[thread: listen] Starting new thread..\n");
-    
-    const int notificationMsgLen = 200;
-    char notificationMsg[notificationMsgLen];
-    
-    // Avalia entrada
-    struct ConnThreadData *data = (struct ConnThreadData *)threadInput;
-    
-    if (!posixIsValidAddrFamily(data->addrFamily)) {
-        memset(notificationMsg, 0, notificationMsgLen);
-        sprintf(notificationMsg, "[thread: listen] Invalid address family: %d", data->addrFamily);
-        commonLogErrorAndDie(notificationMsg);
-    }
-
-    char logPreffix[15];
-    sprintf(logPreffix, "[thread ipv%d]", data->addrFamily == AF_INET ? 4 : 6);
-
     while (1) {
 
         // Criar socket para receber conexoes de clientes
         struct sockaddr_storage clientAddr;
         socklen_t clientAddrLen = sizeof(clientAddr);
 
-        int clientSocket = accept(data->socket, (struct sockaddr *)(&clientAddr), &clientAddrLen);
+        int clientSocket = accept(serverSocket, (struct sockaddr *)(&clientAddr), &clientAddrLen);
         if (clientSocket == -1) {
             
-            memset(notificationMsg, 0, notificationMsgLen);
+            if (errno != EAGAIN && errno != EWOULDBLOCK)
+                commonLogErrorAndDie("Failure as trying to accept client connection");
 
-            if (errno != EAGAIN && errno != EWOULDBLOCK) {
-                sprintf(notificationMsg, "%s Failure as trying to accept client connection", logPreffix);
-                commonLogErrorAndDie(notificationMsg);
-            }
-
-            sprintf(notificationMsg, "\n%s Disconnecting server because of innactivity...\n\n", logPreffix);
-            commonDebugStep(notificationMsg);
+            commonDebugStep("\nDisconnecting server because of innactivity...\n\n");
             break;
         }
+            
 
         // Define dados para thread de tratamento da nova conexao
         struct ClientData *clientData = malloc(sizeof(*clientData));
-        if (!clientData) {
-            memset(notificationMsg, 0, notificationMsgLen);
-            sprintf(notificationMsg, "%s Failure as trying to set new client connection data", logPreffix);
-            commonLogErrorAndDie(notificationMsg);
-        }
+        if (!clientData)
+            commonLogErrorAndDie("Failure as trying to set new client connection data");
 
         struct timeval timeoutTransfer;
         timeoutTransfer.tv_sec = TIMEOUT_TRANSFER_SECS;
