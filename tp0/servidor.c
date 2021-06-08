@@ -62,7 +62,6 @@ int main(int argc, char **argv) {
     memset(boundAddr6, 0, 200);
     int serverSocket = posixListen(port, AF_INET6, &timeoutConn, MAX_CONNECTIONS, boundAddr6);
 
-
     // Notifica sucesso na inicializacao
     if (DEBUG_ENABLE) {
         memset(notificationMsg, 0, notificationMsgLen);
@@ -85,7 +84,6 @@ int main(int argc, char **argv) {
             commonDebugStep("\nDisconnecting server because of innactivity...\n\n");
             break;
         }
-            
 
         // Define dados para thread de tratamento da nova conexao
         struct ClientData *clientData = malloc(sizeof(*clientData));
@@ -114,6 +112,7 @@ int main(int argc, char **argv) {
 void *threadClientConnHandler(void *threadInput) {
 
     commonDebugStep("\n[thread: connection] Starting new thread..\n");
+    char errMsg[BUF_SIZE];
     
     // Avalia entrada
     struct ClientData *client = (struct ClientData *)threadInput;
@@ -123,10 +122,9 @@ void *threadClientConnHandler(void *threadInput) {
     if (DEBUG_ENABLE) {
         char clientAddrStr[INET_ADDRSTRLEN + 1] = "";
         if (posixAddressToString(clientAddr, clientAddrStr)) {
-            char aux[200];
-            memset(aux, 0, 200);
-            sprintf(aux, "[thread: connection] Connected to client at %s...\n", clientAddrStr);
-            commonDebugStep(aux);
+            memset(errMsg, 0, BUF_SIZE);
+            sprintf(errMsg, "[thread: connection] Connected to client at %s...\n", clientAddrStr);
+            commonDebugStep(errMsg);
         }
     }
 
@@ -139,9 +137,9 @@ void *threadClientConnHandler(void *threadInput) {
     const uint32_t txtLength = htonl(atoi(buffer));
 
     if (DEBUG_ENABLE) {
-        char aux[200];
-        sprintf(aux, "\tText Length: \"%u\"\n", txtLength);
-        commonDebugStep(aux);
+        memset(errMsg, 0, txtLength);
+        sprintf(errMsg, "\tText Length: \"%u\"\n", txtLength);
+        commonDebugStep(errMsg);
     }
 
     // Receber chave da cifra
@@ -152,9 +150,9 @@ void *threadClientConnHandler(void *threadInput) {
     const uint32_t cipherKey = htonl(atoi(buffer));
 
     if (DEBUG_ENABLE) {
-        char aux[200];
-        sprintf(aux, "\tCipher key: \"%u\"\n", cipherKey);
-        commonDebugStep(aux);
+        memset(errMsg, 0, txtLength);
+        sprintf(errMsg, "\tCipher key: \"%u\"\n", cipherKey);
+        commonDebugStep(errMsg);
     }
 
     // Receber texto cifrado
@@ -164,10 +162,21 @@ void *threadClientConnHandler(void *threadInput) {
     serverRecvParam(client, buffer, bytesToReceive, RCV_VALIDATION_LCASE, "ciphered text");
     
     if (DEBUG_ENABLE) {
-        char aux[BUF_SIZE];
-        sprintf(aux, "\tCiphered text is: \"%.600s...\"\n", buffer);
-        commonDebugStep(aux);
+        memset(errMsg, 0, BUF_SIZE);
+        sprintf(errMsg, "\tCiphered text is: \"%.600s...\"\n", buffer);
+        commonDebugStep(errMsg);
     }
+
+    /**
+     * TODO: 2021-06-08 - Remover essa gambiarra...
+     */
+    char doubleCheckBuffer[10];
+    memset(doubleCheckBuffer, 0, 10);
+	posixRecv(client->socket, doubleCheckBuffer, &client->timeout);
+	if (strcmp(doubleCheckBuffer, "1") != 0) {
+		sprintf(errMsg, "Double check failure: \"%s\"\n", doubleCheckBuffer);
+		commonLogErrorAndDie(errMsg);
+	}
 
     // Decodificar texto
     commonDebugStep("[thread: connection] Decrypting text...\n");

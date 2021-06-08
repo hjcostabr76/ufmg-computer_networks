@@ -86,6 +86,12 @@ int main(int argc, char **argv) {
 		commonLogErrorAndDie("Failure as sending ciphered text");
 	clientValidateServerReceiving(socketFD, &transferTimeout, "ciphered text");
 
+	/**
+     * TODO: 2021-06-08 - Remover essa gambiarra...
+     */
+	if (!posixSend(socketFD, "1", 1, &transferTimeout))
+		commonLogErrorAndDie("Failure as sending double checking to server");
+
 	// Receber resposta (string desencriptografada)
 	commonDebugStep("Waiting server answer...\n");
 	

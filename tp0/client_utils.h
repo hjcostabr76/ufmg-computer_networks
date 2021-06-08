@@ -15,6 +15,7 @@ void clientSendNumericParam(
 
 /**
  * TODO: 2021-05-31 - ADD Descricao
+ * TODO: 2021-06-08 - Verificar necessidade desta funcao
  */
 void clientValidateServerReceiving(const int socketFD, struct timeval *timeout, const char *opLabel);
 

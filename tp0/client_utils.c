@@ -63,6 +63,9 @@ void clientSendNumericParam(
 	clientValidateServerReceiving(socketFD, timeout, opLabel);
 }
 
+/**
+ * TODO: 2021-06-08 - Verificar necessidade desta funcao
+ */
 void clientValidateServerReceiving(const int socketFD, struct timeval *timeout, const char *opLabel) {
 
 	char buffer[10];
