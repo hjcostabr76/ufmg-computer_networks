@@ -6,8 +6,7 @@
 /**
  * TODO: 2021-06-04 - ADD Descricao
  */
-int posixListen(const int port, const struct timeval *timeout, const int maxConnections, char *boundAddrStr);
-
+int posixListen(const int port, const int addrFamily, const struct timeval *timeout, const int maxConnections, char *boundAddrStr);
 /**
  * TODO: 2021-06-04 - ADD Descricao
  */
@@ -27,3 +26,8 @@ short int posixSend(const int socketFD, const char *buffer, const unsigned bytes
  * TODO: 2021-06-03 - ADD Descricao
  */
 short int posixAddressToString(const struct sockaddr *addr, char *addrStr);
+
+/**
+ * TODO: 2021-06-07 - ADD Descricao
+ */
+short int posixIsValidAddrFamily(const int addrFamily);

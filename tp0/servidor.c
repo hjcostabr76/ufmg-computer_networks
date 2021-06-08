@@ -16,6 +16,11 @@
 
 #define MAX_CONNECTIONS 20
 
+struct ConnThreadData {
+    int socket;
+    int addrFamily;
+};
+
 void explainAndDie(char **argv) {
     printf("\nInvalid Input\n");
     printf("Usage: %s server port>\n", argv[0]);
@@ -23,21 +28,15 @@ void explainAndDie(char **argv) {
     exit(EXIT_FAILURE);
 }
 
-void *threadClientConnectionHandler(void *data);
+void *threadClientConnHandler(void *data);
+void *threadListener(void *data);
 
 /**
  * ------------------------------------------------
  * == Programa Servidor ===========================
  * ------------------------------------------------
- *
- * Etapas:
- * [server] Criar socket -> ??;
- * [server] Bind -> ??;
- * [server] Listen -> ??;
- * [server] Accept -> (Gera socket do cliente)
  * 
  * TODO: 2021-06-02 - Resolver todo's
- * TODO: 2021-06-04 - Abstrair operacao de bind
  * 
  */
 int main(int argc, char **argv) {
@@ -49,22 +48,112 @@ int main(int argc, char **argv) {
         explainAndDie(argv);
     }
 
-    commonDebugStep("Creating server socket...\n");
+    const int notificationMsgLen = 500;
+    char notificationMsg[notificationMsgLen];
+    const int port = atoi(argv[1]);
 
     struct timeval timeoutConn;
+    memset(&timeoutConn, 0, sizeof(timeoutConn));
     timeoutConn.tv_sec = TIMEOUT_CONN_SECS;
     timeoutConn.tv_usec = 0;
 
-    const char *portStr = argv[1];
-    char boundAddr[200];
-    int serverSocket = posixListen(atoi(portStr), &timeoutConn, MAX_CONNECTIONS, boundAddr);
+    // Inicializa ipv6
+    commonDebugStep("Creating server socket [ipv6]...\n");
+    char boundAddr6[200];
+    memset(boundAddr6, 0, 200);
+    int socket6 = posixListen(port, AF_INET6, &timeoutConn, MAX_CONNECTIONS, boundAddr6);
 
+    commonDebugStep("Starting to listen for ipv6 connections...\n");
+    struct ConnThreadData *threadData6 = malloc(sizeof(*threadData6));
+    if (!threadData6)
+        commonLogErrorAndDie("Failure as trying to set new listener thread [ipv6]");
+
+    threadData6->socket = socket6;
+    threadData6->addrFamily = AF_INET6;
+
+    pthread_t tid6;
+    pthread_create(&tid6, NULL, threadListener, threadData6);
+
+    // Inicializa ipv4
+    commonDebugStep("Creating server socket [ipv4]...\n");
+    char boundAddr4[200];
+    memset(boundAddr4, 0, 200);
+    int socket4 = posixListen(port, AF_INET, &timeoutConn, MAX_CONNECTIONS, boundAddr4);
+    
+    commonDebugStep("Starting to listen for ipv4 connections...\n");
+    struct ConnThreadData *threadData4 = malloc(sizeof(*threadData4));
+    if (!threadData4)
+        commonLogErrorAndDie("Failure as trying to set new listener thread [ipv4]");
+
+    threadData4->socket = socket4;
+    threadData4->addrFamily = AF_INET;
+
+    pthread_t tid4;
+    pthread_create(&tid4, NULL, threadListener, threadData4);
+
+    // Notifica sucesso na inicializacao
     if (DEBUG_ENABLE) {
-        char aux[500];
-        memset(aux, 0, 500);
-        sprintf(aux, "\nAll set! Server is bound to %s:%s and waiting for connections...\n", boundAddr, portStr);
-        commonDebugStep(aux);
+        memset(notificationMsg, 0, notificationMsgLen);
+        sprintf(notificationMsg, "\nAll set! Server is bound to addresses %s:%d (ipv4) and %s:%d (ipv6)\nWaiting for connections...\n", boundAddr4, port, boundAddr6, port);
+        commonDebugStep(notificationMsg);
     }
+
+    // Escuta atividade dos sockets
+    short int isSock4Up = 0;
+    short int isSock6Up = 0;
+
+    do {
+
+        int testResult;
+        int testValue;
+        socklen_t len = sizeof(testValue);
+
+        // Avaliar socket ipv4
+        testResult = getsockopt(socket4, SOL_SOCKET, SO_ACCEPTCONN, &testValue, &len);
+        if (testResult != 0) {
+            if (errno != EINVAL) // Socket parou de escutar
+                commonLogErrorAndDie("Failure as trying to monitor socket status [ipv4]");
+            isSock4Up = 0;
+
+        } else
+            isSock4Up = testValue != 0;
+
+        // Avaliar socket ipv6
+        testResult = getsockopt(socket6, SOL_SOCKET, SO_ACCEPTCONN, &testValue, &len);
+        if (testResult != 0) {
+            if (errno != EINVAL) // Socket parou de escutar
+                commonLogErrorAndDie("Failure as trying to monitor socket status [ipv6]");
+            isSock6Up = 0;
+
+        } else
+            isSock6Up = testValue != 0;
+
+    } while (isSock4Up || isSock6Up);
+
+    exit(EXIT_SUCCESS);
+}
+
+/**
+ * TODO: 2021-06-07 - ADD Descricao
+ */
+void *threadListener(void *threadInput) {
+
+    commonDebugStep("\n[thread: listen] Starting new thread..\n");
+    
+    const int notificationMsgLen = 200;
+    char notificationMsg[notificationMsgLen];
+    
+    // Avalia entrada
+    struct ConnThreadData *data = (struct ConnThreadData *)threadInput;
+    
+    if (!posixIsValidAddrFamily(data->addrFamily)) {
+        memset(notificationMsg, 0, notificationMsgLen);
+        sprintf(notificationMsg, "[thread: listen] Invalid address family: %d", data->addrFamily);
+        commonLogErrorAndDie(notificationMsg);
+    }
+
+    char logPreffix[15];
+    sprintf(logPreffix, "[thread ipv%d]", data->addrFamily == AF_INET ? 4 : 6);
 
     while (1) {
 
@@ -72,21 +161,28 @@ int main(int argc, char **argv) {
         struct sockaddr_storage clientAddr;
         socklen_t clientAddrLen = sizeof(clientAddr);
 
-        int clientSocket = accept(serverSocket, (struct sockaddr *)(&clientAddr), &clientAddrLen);
+        int clientSocket = accept(data->socket, (struct sockaddr *)(&clientAddr), &clientAddrLen);
         if (clientSocket == -1) {
             
-            if (errno != EAGAIN && errno != EWOULDBLOCK)
-                commonLogErrorAndDie("Failure as trying to accept client connection");
+            memset(notificationMsg, 0, notificationMsgLen);
 
-            commonDebugStep("\nDisconnecting server because of innactivity...\n\n");
+            if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                sprintf(notificationMsg, "%s Failure as trying to accept client connection", logPreffix);
+                commonLogErrorAndDie(notificationMsg);
+            }
+
+            sprintf(notificationMsg, "\n%s Disconnecting server because of innactivity...\n\n", logPreffix);
+            commonDebugStep(notificationMsg);
             break;
         }
-            
 
         // Define dados para thread de tratamento da nova conexao
         struct ClientData *clientData = malloc(sizeof(*clientData));
-        if (!clientData)
-            commonLogErrorAndDie("Failure as trying to set new client connection data");
+        if (!clientData) {
+            memset(notificationMsg, 0, notificationMsgLen);
+            sprintf(notificationMsg, "%s Failure as trying to set new client connection data", logPreffix);
+            commonLogErrorAndDie(notificationMsg);
+        }
 
         struct timeval timeoutTransfer;
         timeoutTransfer.tv_sec = TIMEOUT_TRANSFER_SECS;
@@ -98,15 +194,18 @@ int main(int argc, char **argv) {
 
         // Inicia nova thread para tratar a nova conexao
         pthread_t tid;
-        pthread_create(&tid, NULL, threadClientConnectionHandler, clientData);
+        pthread_create(&tid, NULL, threadClientConnHandler, clientData);
     }
 
     exit(EXIT_SUCCESS);
 }
 
-void *threadClientConnectionHandler(void *threadInput) {
+/**
+ * TODO: 2021-06-07 - ADD Descricao
+ */
+void *threadClientConnHandler(void *threadInput) {
 
-    commonDebugStep("\n[thread] Starting new thread..\n");
+    commonDebugStep("\n[thread: connection] Starting new thread..\n");
     
     // Avalia entrada
     struct ClientData *client = (struct ClientData *)threadInput;
@@ -118,7 +217,7 @@ void *threadClientConnectionHandler(void *threadInput) {
         if (posixAddressToString(clientAddr, clientAddrStr)) {
             char aux[200];
             memset(aux, 0, 200);
-            sprintf(aux, "[thread] Connected to client at %s...\n", clientAddrStr);
+            sprintf(aux, "[thread: connection] Connected to client at %s...\n", clientAddrStr);
             commonDebugStep(aux);
         }
     }
@@ -126,7 +225,7 @@ void *threadClientConnectionHandler(void *threadInput) {
     // Receber tamanho do texto a ser decodificado
     char buffer[BUF_SIZE];
     
-    commonDebugStep("[thread] Receiving text length...\n");
+    commonDebugStep("[thread: connection] Receiving text length...\n");
     int bytesToReceive = sizeof(uint32_t);
     serverRecvParam(client, buffer, bytesToReceive, RCV_VALIDATION_NUMERIC, "text length");
     const uint32_t txtLength = htonl(atoi(buffer));
@@ -138,7 +237,7 @@ void *threadClientConnectionHandler(void *threadInput) {
     }
 
     // Receber chave da cifra
-    commonDebugStep("[thread] Receiving cipher key...\n");
+    commonDebugStep("[thread: connection] Receiving cipher key...\n");
     memset(buffer, 0, BUF_SIZE);
     bytesToReceive = sizeof(uint32_t);
     serverRecvParam(client, buffer, bytesToReceive, RCV_VALIDATION_NUMERIC, "cipher key");
@@ -151,7 +250,7 @@ void *threadClientConnectionHandler(void *threadInput) {
     }
 
     // Receber texto cifrado
-    commonDebugStep("[thread] Receiving ciphered text...\n");
+    commonDebugStep("[thread: connection] Receiving ciphered text...\n");
     memset(buffer, 0, BUF_SIZE);
     bytesToReceive = txtLength;
     serverRecvParam(client, buffer, bytesToReceive, RCV_VALIDATION_LCASE, "ciphered text");
@@ -163,7 +262,7 @@ void *threadClientConnectionHandler(void *threadInput) {
     }
 
     // Decodificar texto
-    commonDebugStep("[thread] Decrypting text...\n");
+    commonDebugStep("[thread: connection] Decrypting text...\n");
 	
     char text[txtLength];
 	memset(text, 0, txtLength);
@@ -173,12 +272,12 @@ void *threadClientConnectionHandler(void *threadInput) {
     puts(text);
 
     // Enviar
-    commonDebugStep("[thread] Sending answer to client...\n");
+    commonDebugStep("[thread: connection] Sending answer to client...\n");
     if (!posixSend(client->socket, text, txtLength, &client->timeout))
         commonLogErrorAndDie("Failure as sending answer to client");
 
     // Encerra conexao
-	commonDebugStep("\n[thread] Done!\n");
+	commonDebugStep("\n[thread: connection] Done!\n");
     close(client->socket);
     pthread_exit(EXIT_SUCCESS);
 }

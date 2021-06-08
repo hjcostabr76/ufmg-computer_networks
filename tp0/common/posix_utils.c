@@ -58,7 +58,78 @@ int posixIsActionAvailable(int socketFD, const enum FdActionEnum action, struct 
 	}
 }
 
-int posixListen(const int port, const struct timeval *timeout, const int maxConnections, char *boundAddrStr) {
+/**
+ * Analisa 01 string contendo 01 endereco IP & retorna sua correspondente familia (ipv4 / ipv6), se  for valido.
+ * Retorna -1, caso contrario.
+ *
+ * NOTE: Funcao 'privada'
+ */
+int getAddrIPVersion(struct in_addr *addrNumber, const char *addrStr) {
+
+	int isIpv4 = inet_pton(AF_INET, addrStr, &addrNumber);
+	if (isIpv4)
+		return AF_INET;
+
+	int isIpv6 = inet_pton(AF_INET6, addrStr, &addrNumber);
+	if (isIpv6)
+		return AF_INET6;
+
+	return -1;
+}
+
+/**
+ * Conclui procedimento iniciado pela funcao {posixListen}:
+ * - Operacos 'bind' + 'listen';
+ * - Transcricao do endereco da conexao em string;
+ * 
+ * NOTE: Funcao 'privada'
+ */
+void posixListenIpv4(const int socketFD, const int port, const struct sockaddr_storage *storage, const int maxConnections, char *boundAddrStr) {
+
+	struct sockaddr_in *addr = (struct sockaddr_in *)storage;
+	memset(addr, 0, sizeof(struct sockaddr_in));
+
+	addr->sin_family = AF_INET;
+	addr->sin_addr.s_addr = INADDR_ANY; // Significa que o bind deve ocorrer em qualquer endereco da maquiena que estiver disponivel (IPv4)
+	addr->sin_port = htons(port); // Host to network short
+
+	if (bind(socketFD, (struct sockaddr *)addr, sizeof(*addr)) != 0)
+		commonLogErrorAndDie("Failure as biding listening socket [ipv4]");
+    
+	if (listen(socketFD, maxConnections) != 0)
+		commonLogErrorAndDie("Failure as starting to listen [ipv4]");
+
+	posixAddressToString((struct sockaddr *)addr, boundAddrStr);
+	printf("boundAddr: %s\n", boundAddrStr);
+}
+
+/**
+ * Conclui procedimento iniciado pela funcao {posixListen}:
+ * - Operacos 'bind' + 'listen';
+ * - Transcricao do endereco da conexao em string;
+ * 
+ * NOTE: Funcao 'privada'
+ */
+void posixListenIpv6(const int socketFD, const int port, const struct sockaddr_storage *storage, const int maxConnections, char *boundAddrStr) {
+
+	struct sockaddr_in6 *addr = (struct sockaddr_in6 *)storage;
+	memset(addr, 0, sizeof(struct sockaddr_in6));
+
+	addr->sin6_family = AF_INET6;
+	addr->sin6_addr = in6addr_any; // Significa que o bind deve ocorrer em qualquer endereco da maquina que estiver disponivel (IPv6)
+	addr->sin6_port = htons(port); // Host to network short
+
+	if (bind(socketFD, (struct sockaddr *)addr, sizeof(*addr)) != 0)
+		commonLogErrorAndDie("Failure as biding listening socket [ipv6]");
+    
+	if (listen(socketFD, maxConnections) != 0)
+		commonLogErrorAndDie("Failure as starting to listen [ipv6]");
+
+	posixAddressToString((struct sockaddr *)addr, boundAddrStr);
+	printf("boundAddr: %s\n", boundAddrStr);
+}
+
+int posixListen(const int port, const int addrFamily, const struct timeval *timeout, const int maxConnections, char *boundAddrStr) {
 
 	// Validar entrada
 	if (!port)
@@ -67,8 +138,11 @@ int posixListen(const int port, const struct timeval *timeout, const int maxConn
 	if (!maxConnections)
 		commonLogErrorAndDie("Listening socket must accept at least one connection");
 
+	if (!posixIsValidAddrFamily(addrFamily))
+		commonLogErrorAndDie("Invalid address family");
+
 	// Criar socket
-	int socketFD = socket(AF_INET, SOCK_STREAM, 0);
+	const int socketFD = socket(addrFamily, SOCK_STREAM, 0);
     if (socketFD == -1)
         commonLogErrorAndDie("Failure as creating listening socket [1]");
 
@@ -78,27 +152,18 @@ int posixListen(const int port, const struct timeval *timeout, const int maxConn
         commonLogErrorAndDie("Failure as creating listening socket [2]");
 
 	// Define timeout de escuta
-    if (setsockopt(socketFD, SOL_SOCKET, SO_RCVTIMEO, timeout, sizeof(*timeout)) != 0) {
-        commonLogErrorAndDie("Failure as creating listening socket [3]");
-	}
+    if (setsockopt(socketFD, SOL_SOCKET, SO_RCVTIMEO, timeout, sizeof(*timeout)) != 0)
+		commonLogErrorAndDie("Failure as creating listening socket [3]");
 
-	// Iniciar escuta
-	struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
+	// Conclui distinguindo por tipo de IP
+	struct sockaddr_storage storage;
+	memset(&storage, 0, sizeof(storage));
 
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = INADDR_ANY; // Bind ocorre em qualquer endereco disponivel na maquina
-    addr.sin_port = htons(port); // Host to network short
+	if (addrFamily == AF_INET)
+		posixListenIpv4(socketFD, port, &storage, maxConnections, boundAddrStr);
+	else
+		posixListenIpv6(socketFD, port, &storage, maxConnections, boundAddrStr);
 
-    if (bind(socketFD, (struct sockaddr *)(&addr), sizeof(addr)) != 0) {
-        commonLogErrorAndDie("Failure as biding listening socket");
-	}
-    
-	if (listen(socketFD, maxConnections) != 0) {
-        commonLogErrorAndDie("Failure as starting to listen");
-	}
-
-	posixAddressToString((struct sockaddr *)&addr, boundAddrStr);
 	return socketFD;
 }
 
@@ -109,12 +174,12 @@ int posixConnect(const int port, const char *addrStr, const struct timeval *time
 		commonLogErrorAndDie("invalid connection port");
 
 	struct in_addr addrNumber; // Esse struct contem apenas 01 numero mesmo
-	int isIpv4 = inet_pton(AF_INET, addrStr, &addrNumber);
-	if (!isIpv4)
+	const int addrFamily = getAddrIPVersion(&addrNumber, addrStr);
+	if (addrFamily == -1)
 		commonLogErrorAndDie("invalid connection address");
 
 	// Cria socket
-	int socketFD = socket(AF_INET, SOCK_STREAM, 0);
+	int socketFD = socket(addrFamily, SOCK_STREAM, 0);
 	if (socketFD == -1)
 		commonLogErrorAndDie("Failure as creating connection socket [1]");
 
@@ -124,7 +189,7 @@ int posixConnect(const int port, const char *addrStr, const struct timeval *time
 	// Cria conexao
 	struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
+    addr.sin_family = addrFamily;
     addr.sin_port = htons(port);
     addr.sin_addr = addrNumber;
 
@@ -178,6 +243,16 @@ short int posixSend(const int socketFD, const char *buffer, const unsigned bytes
 }
 
 short int posixAddressToString(const struct sockaddr *addr, char *addrStr) {
-    struct sockaddr_in *addr4 = (struct sockaddr_in *)addr;
-    return inet_ntop(AF_INET, &(addr4->sin_addr), addrStr, INET_ADDRSTRLEN + 1) ? 1 : 0;
+
+	if (addr->sa_family == AF_INET)
+		return inet_ntop(AF_INET, &(((struct sockaddr_in *)addr)->sin_addr), addrStr, INET_ADDRSTRLEN + 1) ? 1 : 0;
+
+	if (addr->sa_family == AF_INET6)
+		return inet_ntop(AF_INET6, &(((struct sockaddr_in6 *)addr)->sin6_addr), addrStr, INET6_ADDRSTRLEN + 1) ? 1 : 0;
+    
+	return 0;
+}
+
+short int posixIsValidAddrFamily(const int addrFamily) {
+	return (addrFamily == AF_INET || addrFamily == AF_INET6);
 }
