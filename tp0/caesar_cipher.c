@@ -1,6 +1,6 @@
 #include "common.h"
 
-const int RANGE = ASCII_LC_LETTER_LAST - ASCII_LC_LETTER_FIRST;
+const int CHAR_CODE_RANGE = ASCII_LC_LETTER_LAST - ASCII_LC_LETTER_FIRST;
 
 void caesarCipher(const char *text, const int textLength, char *cipheredText, int key) {
 
@@ -10,7 +10,7 @@ void caesarCipher(const char *text, const int textLength, char *cipheredText, in
 		int cipheredCharCode = currentCharCode + key;
 		
 		while (cipheredCharCode > ASCII_LC_LETTER_LAST) {
-			cipheredCharCode -= (RANGE + 1);
+			cipheredCharCode -= (CHAR_CODE_RANGE + 1);
 		}
 		
 		cipheredText[i] = (char)cipheredCharCode;
@@ -28,7 +28,7 @@ void caesarDecipher(const char *cipheredText, const int textLength, char *text, 
 		int charCode = cipheredCharCode - key;
 		
 		while (charCode < ASCII_LC_LETTER_FIRST) {
-			charCode += (RANGE + 1);
+			charCode += (CHAR_CODE_RANGE + 1);
 		}
 		
 		text[i] = (char)charCode;
