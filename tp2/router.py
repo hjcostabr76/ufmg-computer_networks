@@ -39,7 +39,7 @@ COMMAND_ROUTER_LIST = [COMMAND_ADD, COMMAND_DEL, COMMAND_TRACE]
 '''
     Funcao auxiliar para depuracao.
 '''
-def print_debug(dbg_text) -> None:
+def print_debug(dbg_text: str) -> None:
     if ENABLE_DEBUG:
         print(dbg_text)
 
@@ -77,7 +77,7 @@ def print_instructions_trace() -> None:
 '''
     Centraliza chamadas para exibicao de instrucoes de uso.
 '''
-def print_instructions(help_command) -> None:
+def print_instructions(help_command: str) -> None:
 
     print('\nInstructions:')
 
@@ -168,7 +168,7 @@ def get_cli_params() -> object:
 '''
     Valida linha para comando de exibir instrucoes.
 '''
-def validate_command_help(command_args) -> None:
+def validate_command_help(command_args: list) -> None:
 
     argsc = len(command_args)
     if (argsc > 2):
@@ -180,7 +180,7 @@ def validate_command_help(command_args) -> None:
 '''
     Avalia & retorna parametros de linha do comando: Add roteador.
 '''
-def get_command_data_add(command_args) -> object:
+def get_command_data_add(command_args: list) -> object:
     
     argsc = len(command_args)
 
@@ -201,7 +201,7 @@ def get_command_data_add(command_args) -> object:
 '''
     Avalia & retorna parametros de linha do comando: Remover roteador.
 '''
-def get_command_data_del(command_args) -> object:
+def get_command_data_del(command_args: list) -> object:
     
     argsc = len(command_args)
 
@@ -221,7 +221,7 @@ def get_command_data_del(command_args) -> object:
 '''
     Avalia & retorna parametros de linha do comando: Rastrear roteador.
 '''
-def get_command_data_trace(command_args) -> object:
+def get_command_data_trace(command_args: list) -> object:
     
     argsc = len(command_args)
 
@@ -241,17 +241,17 @@ def get_command_data_trace(command_args) -> object:
 '''
     Avalia & retorna parametros de linha de 01 comando generico.
 '''
-def get_command_data(command_line) -> object:
+def get_command_data(command_line: str) -> object:
 
     command_args = command_line.split()
     command_type = command_args[0]
 
     if (command_type == COMMAND_ADD):
-        parsed_args = get_command_data_add()
+        parsed_args = get_command_data_add(command_args)
     elif (command_type == COMMAND_DEL):
-        parsed_args = get_command_data_del()
+        parsed_args = get_command_data_del(command_args)
     elif (command_type == COMMAND_TRACE):
-        parsed_args = get_command_data_trace()
+        parsed_args = get_command_data_trace(command_args)
 
     else:
 
@@ -267,27 +267,27 @@ def get_command_data(command_line) -> object:
 '''
     Executa comando: Exibir instrucoes.
 '''
-def execute_command_help(command_type) -> None:
+def execute_command_help(command_type: str) -> None:
     return print_instructions(command_type)
 
 '''
     Executa comando: Add roteador na rede.
 '''
-def execute_command_add(command_args) -> None:
+def execute_command_add(address: str, weight: int) -> None:
+    table_routes[address] = { 'weight': weight, 'periods': 0 }
 
-    argsc = len(command_args)
-    if (argsc > 2):
-        raise IOError(COMMAND_HELP + ' command takes up to 02 arguments')
+'''
+    Executa comando: Remover roteador na rede.
+'''
+def execute_command_del(address: str) -> None:
+    if (table_routes[address]):
+        table_routes.pop(address)
 
-    if (argsc == 2):
-        command = command_args[1]
-        if (not command in COMMAND_ROUTER_LIST):
-            raise IOError('Argument 01 is not a valid router command')
-    else:
-        command = None
-
-    return print_instructions(command)
-
+'''
+    Executa comando: Rastrear 01 roteador na rede.
+'''
+def execute_command_trace(address: str) -> None:
+    raise NotImplemented('function execute_command_trace() is yet to be implemented :(')
 
 
 '''
@@ -296,22 +296,25 @@ def execute_command_add(command_args) -> None:
 =================================================================
 '''
 
+
+'''
+    TODO: 2021-08-04 - Abrir trhead para atualizacao periodica da tabela de rotas
+'''
+
 print('\nRunning...')
 print('  Type "' + COMMAND_HELP + ' (' + '|'.join([COMMAND_ADD, COMMAND_DEL, COMMAND_TRACE]) + ')?" for instructions;')
 print('  Type "' + COMMAND_QUIT + '" to quit;')
-# sys.exit()
 
 cli_arguments = None
+table_routes = {}
 
 try:
 
     cli_arguments = get_cli_params()
 
-    '''
-        TODO: 2021-08-04 - ADD Descricao
-    '''
-    sockFD = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sockFD.connect((cli_arguments.addr, PORT))
+    # Criar roteador
+    routerFD = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    routerFD.bind((cli_arguments.addr, PORT))
 
     while (True):
         
@@ -332,15 +335,15 @@ try:
         if (command_data.command == COMMAND_HELP):
             execute_command_help(command_data.help_command)
 
-        # # Abrir arquivos
-        # inputFD = open(input, "r")
-        # # outputFD = open(output, "w")
+        elif (command_data.command == COMMAND_ADD):
+            execute_command_add(command_data.router_addr, command_data.router_weight)
 
-        
+        elif (command_data.command == COMMAND_DEL):
+            execute_command_del(command_data.router_addr)
 
-        # # Enviar dados
-        # raw_chunk = inputFD.read(MSG_LENGTH)
-        # clientFD.send(encode16(raw_chunk))
+        '''
+            TODO: 2021-08-04 - Tratar comando 'trace'
+        '''
 
 except Exception as failure:
     
@@ -354,5 +357,5 @@ except Exception as failure:
         raise failure
 
 finally:
-    sockFD.close()
+    routerFD.close()
     print("\n-- THE END --\n")
