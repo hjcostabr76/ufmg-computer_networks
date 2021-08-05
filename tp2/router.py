@@ -19,6 +19,7 @@ if __name__ != "__main__":
 ENABLE_DEBUG = True
 
 PORT = 55151
+BUF_SIZE = 1024
 
 ARG_NAME_ADDR = '--addr'
 ARG_NAME_PI = '--update-period'
@@ -51,7 +52,7 @@ def print_debug(dbg_text: str) -> None:
     Exibe instrucoes de uso de comando: Inicializacao do programa
 '''
 def print_instructions_init() -> None:
-    print('\nInitialization command formats:')
+    print('Initialization command formats:')
     print('\t- 01: "router.py <IP: string> <pi: float>"')
     print('\t- 02: "router.py <IP: string> <pi: float> <startup_file: string>')
     print('\t- 03: "router.py --addr <IP: string> --update-period <pi: float>')
@@ -61,21 +62,21 @@ def print_instructions_init() -> None:
     Exibe instrucoes de uso de comando: Adicao de roteaodr.
 '''
 def print_instructions_add() -> None:
-    print('\n' + COMMAND_ADD + ' command format:')
+    print(COMMAND_ADD + ' command format:')
     print('\t"router.py ' + COMMAND_ADD + ' <IP: string> <weight: int>"')
 
 '''
     Exibe instrucoes de uso de comando: Remocao de roteaodr.
 '''
 def print_instructions_del() -> None:
-    print('\n' + COMMAND_DEL + ' command format:')
+    print(COMMAND_DEL + ' command format:')
     print('\t"router.py ' + COMMAND_DEL + ' <IP: string>')
 
 '''
     Exibe instrucoes de uso de comando: Rastreamento de roteaodr.
 '''
 def print_instructions_trace() -> None:
-    print('\n' + COMMAND_TRACE + ' command format:')
+    print(COMMAND_TRACE + ' command format:')
     print('\t"router.py ' + COMMAND_TRACE + ' <IP: string>')
 
 '''
@@ -213,23 +214,17 @@ def get_command_data_add(command_args: list) -> object:
     
     argsc = len(command_args)
 
-    try:
-        
-        if (argsc != 3):
-            raise IOError(COMMAND_ADD + ' command takes exactly 03 arguments')
+    if (argsc != 3):
+        raise IOError(COMMAND_ADD + ' command takes exactly 03 arguments')
 
-        class return_data: pass
+    class return_data: pass
 
-        return_data.router_addr = command_args[1]
-        if (not validate_ip(return_data.router_addr)):
-            raise IOError('Invalid IP address')
-        
-        return_data.router_weight = int(command_args[2])
-        return return_data
-
-    except IOError as failure:
-        print_instructions(COMMAND_ADD)
-        raise failure
+    return_data.router_addr = command_args[1]
+    if (not validate_ip(return_data.router_addr)):
+        raise IOError('Invalid IP address')
+    
+    return_data.router_weight = int(command_args[2])
+    return return_data
 
 '''
     Avalia & retorna parametros de linha do comando: Remover roteador.
@@ -238,18 +233,12 @@ def get_command_data_del(command_args: list) -> object:
     
     argsc = len(command_args)
 
-    try:
-        
-        if (argsc != 2):
-            raise IOError(COMMAND_DEL + ' command takes exactly 02 arguments')
+    if (argsc != 2):
+        raise IOError(COMMAND_DEL + ' command takes exactly 02 arguments')
 
-        class return_data: pass
-        return_data.router_addr = command_args[1]
-        return return_data
-
-    except IOError as failure:
-        print_instructions(COMMAND_DEL)
-        raise failure
+    class return_data: pass
+    return_data.router_addr = command_args[1]
+    return return_data
 
 '''
     Avalia & retorna parametros de linha do comando: Rastrear roteador.
@@ -258,18 +247,12 @@ def get_command_data_trace(command_args: list) -> object:
     
     argsc = len(command_args)
 
-    try:
-        
-        if (argsc != 2):
-            raise IOError(COMMAND_TRACE + ' command takes exactly 02 arguments')
+    if (argsc != 2):
+        raise IOError(COMMAND_TRACE + ' command takes exactly 02 arguments')
 
-        class return_data: pass
-        return_data.router_addr = command_args[1]
-        return return_data
-
-    except IOError as failure:
-        print_instructions(COMMAND_TRACE)
-        raise failure
+    class return_data: pass
+    return_data.router_addr = command_args[1]
+    return return_data
 
 '''
     Avalia & retorna parametros de linha de 01 comando generico.
@@ -277,25 +260,30 @@ def get_command_data_trace(command_args: list) -> object:
 def get_command_data(command_line: str) -> object:
 
     command_args = command_line.split()
+    argsc = len(command_args)
     command_type = command_args[0]
 
-    if (command_type == COMMAND_ADD):
-        parsed_args = get_command_data_add(command_args)
-    elif (command_type == COMMAND_DEL):
-        parsed_args = get_command_data_del(command_args)
-    elif (command_type == COMMAND_TRACE):
-        parsed_args = get_command_data_trace(command_args)
+    try:
+        if (command_type == COMMAND_ADD):
+            parsed_args = get_command_data_add(command_args)
+        elif (command_type == COMMAND_DEL):
+            parsed_args = get_command_data_del(command_args)
+        elif (command_type == COMMAND_TRACE):
+            parsed_args = get_command_data_trace(command_args)
 
-    else:
+        else:
+            class parsed_args: pass
+            if (command_type == COMMAND_HELP):
+                validate_command_help(command_args)
+                parsed_args.help_command = command_args[1] if argsc == 2 else None
 
-        class parsed_args: pass
+        parsed_args.command = command_type
+        return parsed_args
         
-        if (command_type == COMMAND_HELP):
-            validate_command_help(command_args)
-            parsed_args.help_command = command_args[1] if len(command_args) == 2 else None
-
-    parsed_args.command = command_type
-    return parsed_args
+    except IOError as error:
+        print('\n-- Invalid input! >.<\" --')
+        print(error)
+        print_instructions(COMMAND_ADD)
 
 '''
     Executa comando: Exibir instrucoes.
@@ -308,13 +296,17 @@ def execute_command_help(command_type: str) -> None:
 '''
 def execute_command_add(address: str, weight: int) -> None:
     table_routes[address] = { 'weight': weight, 'periods': 0 }
+    print('[info] Address ' + address + ' successfully added to routing table...')
 
 '''
     Executa comando: Remover roteador na rede.
 '''
-def execute_command_del(address: str) -> None:
-    if (table_routes[address]):
-        table_routes.pop(address)
+def execute_command_del(addr: str) -> None:
+    if (table_routes.get(addr)):
+        table_routes.pop(addr)
+        print('[info] Address ' + addr + ' successfully removed from routing table...')
+    else:
+        print('[warn] Address ' + addr + ' does not exists in routing table...')
 
 '''
     Executa comando: Rastrear 01 roteador na rede.
@@ -338,37 +330,105 @@ def get_update_distances(src_addr: str, destination_addr: str, destination_dista
 '''
     TODO: 2021-08-05 - ADD Descricao
 '''
-def thread_update_send(pi: float, addr: str, sock: socket.socket) -> None:
+def thread_update_send(addr: str, pi: float) -> None:
 
-    '''
-        TODO: 2021-08-05 - Checar necessidade de manter 'i'
-    '''
+    try:
 
-    i: int = 0
+        i = 0
+        
+        # Criar roteador
+        addr_family = socket.AF_INET if get_ip_version(addr) == 4 else socket.AF_INET6
+        senderFD = socket.socket(addr_family, socket.SOCK_DGRAM)
 
-    while True:
+        print('[info] Ready to send update messages from: ' + addr + ':' + str(PORT) + '...')
 
-        i = i + 1
+        while True:
 
-        for neighbor_addr, neighbor_data in table_routes.items():
-            # print('inside thread...', i, neighbor_addr, neighbor_data)
+            i = i + 1
 
-            msg_update = {
-                'type': 'update',
-                'source': addr,
-                'destination': addr,
-                'distances': get_update_distances(addr, neighbor_addr, neighbor_data['weight'])
-            }
+            # Enviar msgs de update para cada vizinho
+            for neighbor_addr, neighbor_data in table_routes.items():
 
-            sock.sendto(json.dumps(msg_update).encode(), (neighbor_addr, PORT))
+                msg_update = {
+                    'type': 'update',
+                    'source': addr,
+                    'destination': neighbor_addr,
+                    'distances': get_update_distances(addr, neighbor_addr, neighbor_data['weight'])
+                }
 
-        time.sleep(pi)
+                senderFD.sendto(json.dumps(msg_update).encode(), (neighbor_addr, PORT))
+
+            time.sleep(pi)
+
+    except socket.error as error:
+
+        if (not i):
+            print('Update message SENDER failed to start')
+        else:
+            print('Failure as SENDING update messages')
+
+        if (ENABLE_DEBUG):
+            raise error
+
+    finally:
+        if (i):
+            senderFD.close()
 
 
 '''
-=================================================================
--- Loop principal -----------------------------------------------
-=================================================================
+    TODO: 2021-08-05 - ADD Descricao
+'''
+def thread_update_listen(addr: str) -> None:
+
+    try:
+        
+        i = 0
+
+        # Criar socket
+        addr_family = socket.AF_INET if get_ip_version(addr) == 4 else socket.AF_INET6
+        listenerFD = socket.socket(addr_family, socket.SOCK_DGRAM)
+        listenerFD.bind((addr, PORT))
+
+        print('[info] Listening for update messages at: ' + addr + ':' + str(PORT) + '...')
+
+        while True:
+
+            i = i + 1
+            raw_msg, addr_origin = listenerFD.recvfrom(BUF_SIZE)
+            msg_update = json.loads(raw_msg)
+            print('__LISTEN: ', i, msg_update)
+
+
+            # for neighbor_addr, neighbor_data in table_routes.items():
+            #     # print('inside thread...', i, neighbor_addr, neighbor_data)
+
+            #     _msg_update = {
+            #         'type': 'update',
+            #         'source': addr,
+            #         'destination': addr,
+            #         'distances': get_update_distances(addr, neighbor_addr, neighbor_data['weight'])
+            #     }
+
+            #     sock.sendto(json.dumps(_msg_update).encode(), (neighbor_addr, PORT))
+
+            # time.sleep(pi)
+
+    except socket.error as error:
+
+        if (not i):
+            print('Update message listener failed to start')
+        else:
+            print('Error as listening for update messages')
+
+        if (ENABLE_DEBUG):
+            raise error
+
+    finally:
+        if (i):
+            listenerFD.close()
+
+'''
+=================================================================Enviar
 '''
 
 
@@ -376,35 +436,34 @@ def thread_update_send(pi: float, addr: str, sock: socket.socket) -> None:
     TODO: 2021-08-04 - Abrir trhead para atualizacao periodica da tabela de rotas
 '''
 
-print('\nRunning...')
-print('  Type "' + COMMAND_HELP + ' (' + '|'.join([COMMAND_ADD, COMMAND_DEL, COMMAND_TRACE]) + ')?" for instructions;')
-print('  Type "' + COMMAND_QUIT + '" to quit;')
+print('\nRunning...\n')
+print('[hint] Type "' + COMMAND_HELP + ' (' + '|'.join([COMMAND_ADD, COMMAND_DEL, COMMAND_TRACE]) + ')?" for instructions;')
+print('[hint] Type "' + COMMAND_QUIT + '" to quit;')
 
 cli_arguments = None
-table_routes = {}
+table_routes: dict = {}
 
 try:
 
     cli_arguments = get_cli_params()
 
-    # Criar roteador
-    routerFD = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    routerFD.bind((cli_arguments.addr, PORT))
+    # Thread: ENVIAR msgs de update
+    update_sender = Thread(target=thread_update_send, args=(cli_arguments.addr, cli_arguments.pi))
+    update_sender.start()
 
-    # Abrir thread para envio de msgs de update
-    thread_update = Thread(target=thread_update_send, args=(cli_arguments.pi, cli_arguments.addr, routerFD))
-    thread_update.start()
+    # Thread: ESCUTAR msgs de update
+    update_listener = Thread(target=thread_update_listen, args=(cli_arguments.addr,))
+    update_listener.start()
+
+    time.sleep(1)
 
     while (True):
         
         # Le comando via CLI
         command_line = input('\nEnter command: ')
-
-        try:
-            command_data = get_command_data(command_line)
-        except IOError as failure:
-            print('Invalid input! >.<\"')
-            print(failure)
+        command_data = get_command_data(command_line)
+        
+        if (not command_data):
             continue
 
         # Executa comando solicitado
@@ -424,17 +483,15 @@ try:
             TODO: 2021-08-04 - Tratar comando 'trace'
         '''
 
-except Exception as failure:
+except Exception as error:
     
-    print("\n\n-- FALHA ---------\n", failure)
-    print('\n')
-
+    print("\n--------- FALHA ---------")
+    print(error)
+    
     if (cli_arguments == None):
         print_instructions_init()
-
     if (ENABLE_DEBUG):
-        raise failure
+        raise error
 
 finally:
-    routerFD.close()
     print("\n-- THE END --\n")
