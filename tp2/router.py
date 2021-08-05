@@ -1,8 +1,10 @@
 import sys
 import json
 import time
-from threading import Thread
 import socket
+import typing
+
+from threading import Thread
 
 if __name__ != "__main__":
     sys.exit()
@@ -93,6 +95,45 @@ def print_instructions(help_command: str) -> None:
         print_instructions_trace()
 
 '''
+    Avalia 01 string generica & retorna sua versao de IP caso represente 01 IP valido.
+'''
+def get_ip_version(addr: str) -> typing.Union[int, bool]:
+    try:
+
+        # V4
+        try:
+            socket.inet_pton(socket.AF_INET, addr)
+            return 4
+
+        # V6
+        except socket.error:
+            socket.inet_pton(socket.AF_INET6, addr)
+            return 6
+
+    except socket.error:
+        return False
+
+'''
+    Valida string quanto a representar um endereco IP valido.
+'''
+def validate_ip(addr: str, version: int = 4) -> bool:
+    if (not version in [4, 6]):
+        raise ValueError('Invalid IP version for validation')
+    return version == get_ip_version(addr)
+
+'''
+    Valida linha para comando de exibir instrucoes.
+'''
+def validate_command_help(command_args: list) -> None:
+
+    argsc = len(command_args)
+    if (argsc > 2):
+        raise IOError(COMMAND_HELP + ' command takes exactly 01 or 02 arguments')
+
+    if (argsc == 2 and not command_args[1] in COMMAND_ROUTER_LIST):
+        raise IOError('Argument 1 is not a valid router command')
+
+'''
 Valida & retorna parametros de linha de comando.
 
 '''
@@ -140,13 +181,11 @@ def get_cli_params() -> object:
         if (argsc > 3):
             startup_path = sys.argv[3]
 
-    '''
-        TODO: 2021-08-04 - Concluir validacao de endereco
-    '''
-
     # Validar endereco
     if (not addr):
         raise IOError('Address is required')
+    if (not validate_ip(addr)):
+        raise IOError('Invalid address')
     
     # Validar PI
     if (not pi):
@@ -168,18 +207,6 @@ def get_cli_params() -> object:
     return return_data
 
 '''
-    Valida linha para comando de exibir instrucoes.
-'''
-def validate_command_help(command_args: list) -> None:
-
-    argsc = len(command_args)
-    if (argsc > 2):
-        raise IOError(COMMAND_HELP + ' command takes exactly 01 or 02 arguments')
-
-    if (argsc == 2 and not command_args[1] in COMMAND_ROUTER_LIST):
-        raise IOError('Argument 1 is not a valid router command')
-
-'''
     Avalia & retorna parametros de linha do comando: Add roteador.
 '''
 def get_command_data_add(command_args: list) -> object:
@@ -192,7 +219,11 @@ def get_command_data_add(command_args: list) -> object:
             raise IOError(COMMAND_ADD + ' command takes exactly 03 arguments')
 
         class return_data: pass
+
         return_data.router_addr = command_args[1]
+        if (not validate_ip(return_data.router_addr)):
+            raise IOError('Invalid IP address')
+        
         return_data.router_weight = int(command_args[2])
         return return_data
 
@@ -298,7 +329,7 @@ def get_update_distances(src_addr: str, destination_addr: str, destination_dista
 
     distances = { src_addr: destination_distance }
 
-    for neighbor_addr, neighbor_data in table_routes:
+    for neighbor_addr, neighbor_data in table_routes.items():
         if (neighbor_addr != destination_addr):
             distances[neighbor_addr] = destination_distance + neighbor_data['weight']
 
@@ -307,20 +338,29 @@ def get_update_distances(src_addr: str, destination_addr: str, destination_dista
 '''
     TODO: 2021-08-05 - ADD Descricao
 '''
-def thread_send_update(pi: float, addr: str, sock: socket.socket) -> None:
+def thread_update_send(pi: float, addr: str, sock: socket.socket) -> None:
+
+    '''
+        TODO: 2021-08-05 - Checar necessidade de manter 'i'
+    '''
+
+    i: int = 0
 
     while True:
 
-        for neighbor_addr, neighbor_data in table_routes:
+        i = i + 1
+
+        for neighbor_addr, neighbor_data in table_routes.items():
+            # print('inside thread...', i, neighbor_addr, neighbor_data)
 
             msg_update = {
                 'type': 'update',
                 'source': addr,
                 'destination': addr,
-                'distances': get_update_distances(neighbor_addr, neighbor_data['weight'])
+                'distances': get_update_distances(addr, neighbor_addr, neighbor_data['weight'])
             }
 
-            sock.sendto(json.dumps(msg_update), (neighbor_addr, PORT))
+            sock.sendto(json.dumps(msg_update).encode(), (neighbor_addr, PORT))
 
         time.sleep(pi)
 
@@ -352,7 +392,7 @@ try:
     routerFD.bind((cli_arguments.addr, PORT))
 
     # Abrir thread para envio de msgs de update
-    thread_update = Thread(target=thread_send_update, args=(cli_arguments.pi, cli_arguments.addr, routerFD))
+    thread_update = Thread(target=thread_update_send, args=(cli_arguments.pi, cli_arguments.addr, routerFD))
     thread_update.start()
 
     while (True):
