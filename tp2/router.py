@@ -1,5 +1,7 @@
 import sys
-from typing import Dict
+import json
+import time
+from threading import Thread
 import socket
 
 if __name__ != "__main__":
@@ -289,6 +291,39 @@ def execute_command_del(address: str) -> None:
 def execute_command_trace(address: str) -> None:
     raise NotImplemented('function execute_command_trace() is yet to be implemented :(')
 
+'''
+    Calcula & retorna distancias entre cada vizinho & este vizinho.
+'''
+def get_update_distances(src_addr: str, destination_addr: str, destination_distance: int) -> dict:
+
+    distances = { src_addr: destination_distance }
+
+    for neighbor_addr, neighbor_data in table_routes:
+        if (neighbor_addr != destination_addr):
+            distances[neighbor_addr] = destination_distance + neighbor_data['weight']
+
+    return distances
+
+'''
+    TODO: 2021-08-05 - ADD Descricao
+'''
+def thread_send_update(pi: float, addr: str, sock: socket.socket) -> None:
+
+    while True:
+
+        for neighbor_addr, neighbor_data in table_routes:
+
+            msg_update = {
+                'type': 'update',
+                'source': addr,
+                'destination': addr,
+                'distances': get_update_distances(neighbor_addr, neighbor_data['weight'])
+            }
+
+            sock.sendto(json.dumps(msg_update), (neighbor_addr, PORT))
+
+        time.sleep(pi)
+
 
 '''
 =================================================================
@@ -315,6 +350,10 @@ try:
     # Criar roteador
     routerFD = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     routerFD.bind((cli_arguments.addr, PORT))
+
+    # Abrir thread para envio de msgs de update
+    thread_update = Thread(target=thread_send_update, args=(cli_arguments.pi, cli_arguments.addr, routerFD))
+    thread_update.start()
 
     while (True):
         
