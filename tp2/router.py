@@ -246,7 +246,7 @@ def get_command_data_trace(command_args: list) -> object:
         raise IOError(COMMAND_TRACE + ' command takes exactly 02 arguments')
 
     class return_data: pass
-    return_data.router_addr = command_args[1]
+    return_data.target = command_args[1]
     return return_data
 
 '''
@@ -264,7 +264,7 @@ def get_command_data(command_line: str) -> object:
         elif (command_type == COMMAND_DEL):
             parsed_args = get_command_data_del(command_args)
         elif (command_type == COMMAND_TRACE):
-            parsed_args = get_coargscmmand_data_trace(command_args)
+            parsed_args = get_command_data_trace(command_args)
 
         else:
             class parsed_args: pass
@@ -320,14 +320,13 @@ def execute_command_del(addr: str) -> None:
         print('[warn] Address ' + addr + ' does not exists in routing table...')
 
 '''
-    TODO: 2021-08-05 - Concluir imnplementacao...
     Executa comando: Rastrear 01 roteador na rede.
 '''
-def execute_command_trace(address: str, target: str, hops: list = None) -> None:
-
-
-
-    send_msg_trace(address, dest, [])
+def execute_command_trace(src: str, target: str, hops: list = None) -> None:
+    for addr_dest in routing_table.keys():
+        best_route = get_destination_best_route(addr_dest)
+        if (best_route):
+            send_msg_trace(src, addr_dest, target, hops if hops != None else [])
 
 '''
     Validador de mensagens: Dados.
@@ -404,36 +403,11 @@ def validate_msg(msg: dict) -> None:
 '''
     Encapsula procedimento de envio de quaisquer mensagens.
 '''
-def handle_msg_update(src: str, distances: dict) -> None:
-
-    for addr_dest_update in distances.keys():
-        
-        # Inclui nova rota na lista de novas rotas 
-        weight: int = distances.get(addr_dest_update)
-        current_routes: list = routing_table.get(addr_dest_update)
-
-        if (current_routes == None):
-            execute_command_add(src, addr_dest, weight)
-            continue
-
-        for current_route in current_routes:
-
-            # Atualiza rota pre-existente
-            addr_dest = current_route.get('addr_dest')
-            if (addr_dest == addr_dest_update):
-                current_route['period'] = 0
-                current_route['weight'] = weight
-                continue
-
-'''
-    Encapsula procedimento de envio de quaisquer mensagens.
-'''
-def send_msg(msg: dict, src: str = None) -> None:
+def send_msg(src: str, dest: str, msg: dict) -> None:
     try:
-        src = src if src != None else msg.get('source')
         addr_family = socket.AF_INET if get_ip_version(src) == 4 else socket.AF_INET6
         senderFD = socket.socket(addr_family, socket.SOCK_DGRAM)
-        senderFD.sendto(json.dumps(msg).encode(), (msg.get('destination'), PORT))
+        senderFD.sendto(json.dumps(msg).encode(), (dest, PORT))
 
     except socket.error as error:
         print('Failure as sending ' + msg.get('type') + ' message')
@@ -447,23 +421,29 @@ def send_msg(msg: dict, src: str = None) -> None:
     Encapsula procedimento de envio de mensagens: Dados.
 '''
 def send_msg_data(src: str, dest: str, payload) -> None:
-    send_msg({
-            'type': MSG_TYPE_DATA,
-            'source': src,
-            'destination': dest,
-            'payload': payload,
-        })
+
+    msg = {
+        'type': MSG_TYPE_DATA,
+        'source': src,
+        'destination': dest,
+        'payload': payload,
+    }
+
+    send_msg(src, dest, msg)
 
 '''
     Encapsula procedimento de envio de mensagens: Trace.
 '''
-def send_msg_trace(src: str, dest: str, hops: list) -> None:
-    send_msg({
-            'type': MSG_TYPE_TRACE,
-            'source': src,
-            'destination': dest,
-            'hops': hops,
-        })
+def send_msg_trace(src: str, dest: str, target: str, hops: list) -> None:
+
+    msg = {
+        'type': MSG_TYPE_TRACE,
+        'source': src,
+        'destination': target,
+        'hops': hops,
+    }
+
+    send_msg(src, dest, msg)
 
 '''
     Handler para avaliacao de mensgens: Update.
@@ -482,12 +462,14 @@ def send_msg_update(src: str, dest: str, weight: int) -> None:
             if (route.get('addr_src') != dest):
                 distances[addr_neighbor] = weight + addr_routes.get('weight')
 
-    send_msg({
-            'type': MSG_TYPE_UPDATE,
-            'source': src,
-            'destination': dest,
-            'distances': distances,
-        })
+    msg = {
+        'type': MSG_TYPE_UPDATE,
+        'source': src,
+        'destination': dest,
+        'distances': distances,
+    }
+
+    send_msg(src, dest, msg)
 
 '''
     Handler para avaliacao de mensgens: Dados.
@@ -498,21 +480,44 @@ def handle_msg_data(src: str, payload) -> None:
 '''
     Handler para avaliacao de mensgens: Trace.
 '''
-def handle_msg_trace(addr: str, msg: dict) -> None:
+def handle_msg_trace(src: str, msg: dict) -> None:
 
     # Propaga msg de rastreamento (quando alvo for outro roteador)
-    hops = msg.get('hops') + [addr]
-    if (msg.get('destination') != addr):
-        return execute_command_trace(addr, msg.get('destination'), hops)
+    hops = msg.get('hops') + [src]
+    if (msg.get('destination') != src):
+        return execute_command_trace(src, msg.get('destination'), hops)
     
     # Responde msg de rastreamento (quando alvo for este roteador)
     msg['hops'] = hops
-    send_msg_data(addr, msg.get('source'), msg)
+    send_msg_data(src, msg.get('source'), msg)
+
+'''
+    Encapsula procedimento de envio de quaisquer mensagens.
+'''
+def handle_msg_update(src: str, distances: dict) -> None:
+
+    for addr_dest_update in distances.keys():
+        
+        # Inclui nova rota se ainda nao existir
+        weight: int = distances.get(addr_dest_update)
+        current_routes: list = routing_table.get(addr_dest_update)
+
+        if (current_routes == None):
+            execute_command_add(src, addr_dest, weight)
+            continue
+
+        # Atualiza rota caso ja exista
+        for current_route in current_routes:
+            addr_dest = current_route.get('addr_dest')
+            if (addr_dest == addr_dest_update):
+                current_route['period'] = 0
+                current_route['weight'] = weight
+                continue
 
 '''
     Handler generico para avaliacao de mensgens recebidas.
 '''
-def handle_msg(addr: str, raw_msg: bytes) -> None:
+def handle_msg(src: str, raw_msg: bytes) -> None:
     
     msg: dict = json.loads(raw_msg)
     validate_msg(msg)
@@ -522,9 +527,9 @@ def handle_msg(addr: str, raw_msg: bytes) -> None:
     if (msg_type == MSG_TYPE_UPDATE):
         handle_msg_update(msg.get('source'), msg.get('distance'))
     elif (msg_type == MSG_TYPE_TRACE):
-        handle_msg_trace(addr, msg)
+        handle_msg_trace(src, msg)
     elif (msg_type == MSG_TYPE_DATA):
-        handle_msg_data(addr, msg)
+        handle_msg_data(src, msg)
 
 '''
     TODO: 2021-08-06 - ADD Descricao
@@ -543,6 +548,28 @@ def get_destination_best_route(addr_dest: str) -> typing.Union[dict, None]:
     if (best_route):
         return route
 
+'''
+    TODO: 2021-08-06 - ADD Descricao
+'''
+def clear_outdated_routes(addr_dest: str) -> None:
+    
+    neighbor_routes = routing_table.get(addr_dest)
+    if (not neighbor_routes or not len(neighbor_routes)):
+        return
+
+    routes_to_pop = []
+
+    for i in range(len(neighbor_routes)):
+
+        route = neighbor_routes[i]
+        route['periods'] = route.get('periods') + 1
+
+        if (route.get('periods') > MAX_PERIODS):
+            routes_to_pop.append(i)
+            continue
+    
+    for j in routes_to_pop:
+        neighbor_routes.pop(j)
 
 '''
     Thread para atualizacao periodica da tabela de roteamento:
@@ -555,49 +582,14 @@ def thread_update_table(addr: str, pi: float) -> None:
     print('[info] Ready to send update messages from: ' + addr + ':' + str(PORT) + '...')
 
     while True:
-
         time.sleep(pi)
-
-        neighbors_to_pop = []
         
-        for outdated_neighbor, neighbor_routes in routing_table.items():
+        for addr_dest in routing_table.keys():
+            clear_outdated_routes(addr_dest)
+            best_route = get_destination_best_route(addr_dest)
+            if (best_route):
+                send_msg_update(addr, addr_dest, best_route.get('weight'))
 
-            # Avalia se ainda ha rotas conhecidas para este destino
-            if (not len(neighbor_routes)):
-                neighbors_to_pop.append(outdated_neighbor)
-                continue
-
-            routes_to_pop = []
-            best_route = math.inf
-
-            for i in range(len(neighbor_routes)):
-
-                # Identifica rotas desatualizadas para serem descartadas
-                route = neighbor_routes[i]
-                idled_periods = route.get('periods')
-
-                if (idled_periods >= MAX_PERIODS):
-                    routes_to_pop.append(i)
-                    continue
-
-                route['periods'] = idled_periods + 1
-                
-                # Avalia se essa eh a melhor rota para o destino em analise
-                if (route.get('weight') < best_route):
-                    best_route = route.get('weight')
-            
-            # Descarta rotas desatualizadas
-            for j in routes_to_pop:
-                neighbor_routes.pop(j)
-
-            # Enviar msg de update para 01 vizinho se houver rota para o mesmo
-            if (best_route != math.inf):
-                send_msg_update(addr, outdated_neighbor, best_route)
-
-        # Excluir, da tabela de roteamento, vizinhos que ficaram sem rotas 
-        for outdated_neighbor in neighbors_to_pop:
-            print('[info] There ain\'t no more valid paths to destination ' + addr)
-            routing_table.pop(outdated_neighbor)
 
 '''
     Thread recebimento de mensagens de roteadores vizinhos.
@@ -640,7 +632,7 @@ try:
 
     cli_arguments = get_cli_params()
 
-    # Thread: ENVIAR msgs de update
+    # Thread: Acoes de atualizacao da tabela de roteamento
     update_sender = Thread(target=thread_update_table, args=(cli_arguments.addr, cli_arguments.pi))
     update_sender.start()
 
@@ -673,7 +665,7 @@ try:
             execute_command_del(command_data.addr)
 
         elif (command_data.command == COMMAND_TRACE):
-            execute_command_trace(command_data.addr)
+            execute_command_trace(command_data.addr, command_data.target)
 
 except Exception as error:
     
