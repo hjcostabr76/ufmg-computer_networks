@@ -255,7 +255,6 @@ def get_command_data_trace(command_args: list) -> object:
 def get_command_data(command_line: str) -> object:
 
     command_args = command_line.split()
-    argsc = len(command_args)
     command_type = command_args[0]
 
     try:
@@ -270,7 +269,7 @@ def get_command_data(command_line: str) -> object:
             class parsed_args: pass
             if (command_type == COMMAND_HELP):
                 validate_command_help(command_args)
-                parsed_args.help_command = command_args[1] if argsc == 2 else None
+                parsed_args.help_command = command_args[1] if len(command_args) == 2 else None
 
         parsed_args.command = command_type
         return parsed_args
@@ -358,8 +357,8 @@ def validate_msg_trace(msg: dict) -> None:
 def validate_msg_update(msg: dict) -> None:
 
     distances: dict = msg.get('distances')
-    if (type(distances) != 'dict'):
-        raise IOError('Update Message: Invalid value for distances list (should be of type "dict")')
+    if (type(distances) != dict):
+        raise IOError('Update Message: Invalid value for distances list (should be of type dict, ' + str(type(distances)) + ' received)')
 
     for addr_dest in distances.keys():
         
@@ -367,7 +366,7 @@ def validate_msg_update(msg: dict) -> None:
             raise IOError('Update Message: Invalid IP address in distances dict: "' + addr_dest + '"')
 
         weight = distances.get(addr_dest)
-        if (type(weight) != 'int' or weight <= 0):
+        if (type(weight) != int or weight <= 0): 
             raise IOError('Update Message: Weight for address ' + addr_dest + ' should be a positive int ("' + weight + '" provided)')
 
 '''
@@ -505,7 +504,7 @@ def handle_msg_update(src: str, distances: dict) -> None:
         current_routes: list = routing_table.get(addr_dest_update)
 
         if (current_routes == None):
-            execute_command_add(src, addr_dest, weight)
+            execute_command_add(src, addr_dest_update, weight)
             continue
 
         # Atualiza rota caso ja exista
@@ -519,20 +518,28 @@ def handle_msg_update(src: str, distances: dict) -> None:
 '''
     Handler generico para avaliacao de mensgens recebidas.
 '''
-def handle_msg(src: str, raw_msg: bytes) -> None:
-    
-    msg: dict = json.loads(raw_msg)
-    validate_msg(msg)
-    
-    msg_type = msg.get('type')
-    print('[message: ' + msg_type + '] New message received from: ' + src)
+def handle_msg(raw_msg: bytes) -> None:
+    try:
 
-    if (msg_type == MSG_TYPE_UPDATE):
-        handle_msg_update(msg.get('source'), msg.get('distance'))
-    elif (msg_type == MSG_TYPE_TRACE):
-        handle_msg_trace(src, msg)
-    elif (msg_type == MSG_TYPE_DATA):
-        handle_msg_data(src, msg)
+        msg: dict = json.loads(raw_msg)
+        addr_src = msg.get('source') if msg.get('source') else '?'
+        validate_msg(msg)
+        
+        msg_type = msg.get('type')
+        print('[message: ' + msg_type + '] New message received from: ' + addr_src)
+
+        if (msg_type == MSG_TYPE_UPDATE):
+            handle_msg_update(msg.get('source'), msg.get('distances'))
+        elif (msg_type == MSG_TYPE_TRACE):
+            handle_msg_trace(addr_src, msg)
+        elif (msg_type == MSG_TYPE_DATA):
+            handle_msg_data(addr_src, msg)
+
+    except IOError as error:
+        print('Falha ao receber mensagem de: ' + addr_src)
+        print(error)
+        if (ENABLE_DEBUG):
+            print(msg)
 
 '''
     TODO: 2021-08-06 - ADD Descricao
@@ -588,7 +595,7 @@ def clear_outdated_destinations() -> None:
             addr_to_pop_list.append(addr)
     
     for addr in addr_to_pop_list:
-        print('[info] Forgeting neighbor ' + addr + '. We haven\'t of it for too long :(')
+        print('[info] Forgeting neighbor ' + addr + '. We haven''t heard of it for too long :(')
         routing_table.pop(addr)
 
 '''
@@ -640,7 +647,7 @@ def thread_listen_msgs(addr: str) -> None:
 
         while True:
             raw_msg = listenerFD.recv(BUF_SIZE)
-            handle_msg(addr, raw_msg)
+            handle_msg(raw_msg)
 
     except socket.error as error:
         print('Update message listener failed to start')
