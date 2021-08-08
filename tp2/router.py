@@ -162,21 +162,21 @@ def print_instructions_init() -> None:
 '''
 def print_instructions_add() -> None:
     print(COMMAND_ADD + ' command format:')
-    print('\t"router.py ' + COMMAND_ADD + ' <IP: string> <weight: int>"')
+    print('\t' + COMMAND_ADD + ' <IP: string> <weight: int>"')
 
 '''
     Exibe instrucoes de uso de comando: Remocao de roteaodr.
 '''
 def print_instructions_del() -> None:
     print(COMMAND_DEL + ' command format:')
-    print('\t"router.py ' + COMMAND_DEL + ' <IP: string>')
+    print('\t' + COMMAND_DEL + ' <IP: string>')
 
 '''
     Exibe instrucoes de uso de comando: Rastreamento de roteaodr.
 '''
 def print_instructions_trace() -> None:
     print(COMMAND_TRACE + ' command format:')
-    print('\t"router.py ' + COMMAND_TRACE + ' <IP: string>')
+    print('\t' + COMMAND_TRACE + ' <IP: string>')
 
 '''
     Centraliza chamadas para exibicao de instrucoes de uso.
@@ -307,6 +307,7 @@ def execute_command_add(addr_src: str, addr_dst: str, weight: int) -> None:
     if (not exists):
         destination_routes.append({ 'addr_src': addr_src, 'weight': weight, 'periods': 0 })
 
+    routing_table[addr_dst] = destination_routes
     print('[info] Address ' + addr_dst + ' successfully added to routing table...')
 
 '''
@@ -394,11 +395,11 @@ def validate_msg(msg: dict) -> None:
 
     # Valida campos especificos de cada tipo de msg
     if (msg_type == MSG_TYPE_DATA):
-        validate_msg_data()
+        validate_msg_data(msg)
     elif (msg_type == MSG_TYPE_TRACE):
-        validate_msg_trace()
+        validate_msg_trace(msg)
     elif (msg_type == MSG_TYPE_UPDATE):
-        validate_msg_update()
+        validate_msg_update(msg)
 
 '''
     Encapsula procedimento de envio de quaisquer mensagens.
@@ -469,19 +470,20 @@ def send_msg_update(src: str, dest: str, weight: int) -> None:
         'distances': distances,
     }
 
+    print('[info] Sending ' + MSG_TYPE_UPDATE + ' message to: ' + dest)
     send_msg(src, dest, msg)
 
 '''
     Handler para avaliacao de mensgens: Dados.
 '''
 def handle_msg_data(src: str, payload) -> None:
-    print('[message: data] New message received from: ' + src + ':\n\t', payload)
+    print('\t' + src + ' says: ', payload)
 
 '''
     Handler para avaliacao de mensgens: Trace.
 '''
 def handle_msg_trace(src: str, msg: dict) -> None:
-
+    
     # Propaga msg de rastreamento (quando alvo for outro roteador)
     hops = msg.get('hops') + [src]
     if (msg.get('destination') != src):
@@ -495,7 +497,7 @@ def handle_msg_trace(src: str, msg: dict) -> None:
     Encapsula procedimento de envio de quaisquer mensagens.
 '''
 def handle_msg_update(src: str, distances: dict) -> None:
-
+    
     for addr_dest_update in distances.keys():
         
         # Inclui nova rota se ainda nao existir
@@ -523,6 +525,7 @@ def handle_msg(src: str, raw_msg: bytes) -> None:
     validate_msg(msg)
     
     msg_type = msg.get('type')
+    print('[message: ' + msg_type + '] New message received from: ' + src)
 
     if (msg_type == MSG_TYPE_UPDATE):
         handle_msg_update(msg.get('source'), msg.get('distance'))
@@ -536,12 +539,12 @@ def handle_msg(src: str, raw_msg: bytes) -> None:
 '''
 def get_destination_best_route(addr_dest: str) -> typing.Union[dict, None]:
 
-    dest_routes = routing_table.get(addr_dest)
-    if (not dest_routes):
+    neighbor_routes = routing_table.get(addr_dest)
+    if (not neighbor_routes):
         return
     
-    best_route: dict
-    for route in dest_routes:
+    best_route: dict = None
+    for route in neighbor_routes:
         if (not best_route or route.get('weight') < best_route.get('weight')):
             best_route = route
 
@@ -572,6 +575,23 @@ def clear_outdated_routes(addr_dest: str) -> None:
         neighbor_routes.pop(j)
 
 '''
+    TODO: 2021-08-06 - ADD Descricao
+'''
+def clear_outdated_destinations() -> None:
+    
+    addr_dest_list = routing_table.keys()
+    addr_to_pop_list = []
+    
+    for addr in addr_dest_list:
+        neighbor_routes = routing_table.get(addr)
+        if (not len(neighbor_routes)):
+            addr_to_pop_list.append(addr)
+    
+    for addr in addr_to_pop_list:
+        print('[info] Forgeting neighbor ' + addr + '. We haven\'t of it for too long :(')
+        routing_table.pop(addr)
+
+'''
     Thread para atualizacao periodica da tabela de roteamento:
     - Atualiza a idade de cada rota conhecida;
     - Remove da tabela rotas desatualizadas;
@@ -580,19 +600,35 @@ def clear_outdated_routes(addr_dest: str) -> None:
 def thread_update_table(addr: str, pi: float) -> None:
 
     print('[info] Ready to send update messages from: ' + addr + ':' + str(PORT) + '...')
+    
+    idled_periods = 0
+    idling_checkpoint = 8
 
     while True:
-        time.sleep(pi)
         
-        for addr_dest in routing_table.keys():
+        time.sleep(pi)
+        addr_dest_list = routing_table.keys()
+
+        # Notifica em caso de multiplos periodos sem atualizacao        
+        if (not len(addr_dest_list)):
+            idled_periods = idled_periods + 1
+            if (idled_periods > idling_checkpoint):
+                idled_periods = 0
+                print('[warn] No neighbors to send messages...')
+                print(routing_table)
+            continue
+
+        # Atualiza rotas / destinos da tabela de roteamento            
+        for addr_dest in addr_dest_list:
             clear_outdated_routes(addr_dest)
             best_route = get_destination_best_route(addr_dest)
             if (best_route):
                 send_msg_update(addr, addr_dest, best_route.get('weight'))
 
+        clear_outdated_destinations()
 
 '''
-    Thread recebimento de mensagens de roteadores vizinhos.
+    Thread para recebimento de mensagens de roteadores vizinhos.
 '''
 def thread_listen_msgs(addr: str) -> None:
     try:
