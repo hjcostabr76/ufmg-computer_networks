@@ -148,6 +148,29 @@ def get_cli_params() -> object:
     return return_data
 
 '''
+    Inclui OU atualiza registro de 01 rota na tabela de roteamento.
+'''
+def set_route(addr_src: str, addr_dst: str, weight: int) -> None:
+    
+    destination_routes: list = routing_table.get(addr_dst)
+    if (not destination_routes):
+        destination_routes = []
+
+    exists = False
+
+    for route in destination_routes:
+        if (route.get('addr_src') == addr_src):
+            exists = True
+            route['periods'] = 0
+            route['weight'] = weight
+            break
+
+    if (not exists):
+        destination_routes.append({ 'addr_src': addr_src, 'weight': weight, 'periods': 0 })
+
+    routing_table[addr_dst] = destination_routes
+
+'''
     Exibe instrucoes de uso de comando: Inicializacao do programa
 '''
 def print_instructions_init() -> None:
@@ -289,25 +312,9 @@ def execute_command_help(command_type: str) -> None:
     Executa comando: Add roteador na rede.
 '''
 def execute_command_add(addr_src: str, addr_dst: str, weight: int) -> None:
-
-    destination_routes: list = routing_table.get(addr_dst)
-    if (not destination_routes):
-        destination_routes = []
-
-    exists = False
-
-    for route in destination_routes:
-        if (route.get('addr_src') == addr_src):
-            exists = True
-            route['periods'] = 0
-            route['weight'] = weight
-            break
-
-    if (not exists):
-        destination_routes.append({ 'addr_src': addr_src, 'weight': weight, 'periods': 0 })
-
-    routing_table[addr_dst] = destination_routes
+    set_route(addr_src, addr_dst, weight)
     print('[info] Address ' + addr_dst + ' successfully added to routing table...')
+
 
 '''
     Executa comando: Remover roteador na rede.
@@ -324,7 +331,7 @@ def execute_command_del(addr: str) -> None:
 '''
 def execute_command_trace(src: str, target: str, hops: list = None) -> None:
     for addr_dest in routing_table.keys():
-        best_route = get_destination_best_route(addr_dest)
+        best_route = get_best_route(addr_dest)
         if (best_route):
             send_msg_trace(src, addr_dest, target, hops if hops != None else [])
 
@@ -495,25 +502,9 @@ def handle_msg_trace(src: str, msg: dict) -> None:
 '''
     Encapsula procedimento de envio de quaisquer mensagens.
 '''
-def handle_msg_update(src: str, distances: dict) -> None:
-    
-    for addr_dest_update in distances.keys():
-        
-        # Inclui nova rota se ainda nao existir
-        weight: int = distances.get(addr_dest_update)
-        current_routes: list = routing_table.get(addr_dest_update)
-
-        if (current_routes == None):
-            execute_command_add(src, addr_dest_update, weight)
-            continue
-
-        # Atualiza rota caso ja exista
-        for current_route in current_routes:
-            addr_dest = current_route.get('addr_dest')
-            if (addr_dest == addr_dest_update):
-                current_route['period'] = 0
-                current_route['weight'] = weight
-                continue
+def handle_msg_update(addr_src: str, distances: dict) -> None:
+    for addr_dest, weight in distances.items():
+        set_route(addr_src, addr_dest, weight)
 
 '''
     Handler generico para avaliacao de mensgens recebidas.
@@ -544,7 +535,7 @@ def handle_msg(raw_msg: bytes) -> None:
 '''
     TODO: 2021-08-06 - ADD Descricao
 '''
-def get_destination_best_route(addr_dest: str) -> typing.Union[dict, None]:
+def get_best_route(addr_dest: str) -> typing.Union[dict, None]:
 
     neighbor_routes = routing_table.get(addr_dest)
     if (not neighbor_routes):
@@ -628,7 +619,7 @@ def thread_update_table(addr: str, pi: float) -> None:
         # Atualiza rotas / destinos da tabela de roteamento            
         for addr_dest in addr_dest_list:
             clear_outdated_routes(addr_dest)
-            best_route = get_destination_best_route(addr_dest)
+            best_route = get_best_route(addr_dest)
             if (best_route):
                 send_msg_update(addr, addr_dest, best_route.get('weight'))
 
