@@ -61,7 +61,7 @@ should_stop_threads = False
 
 '''
 =================================================================
--- Declarar funcoes auxiliares ----------------------------------
+-- Declarar funcoes genericas / auxiliares / utilitarias --------
 =================================================================
 '''
 
@@ -152,6 +152,60 @@ def validate_ip(addr: str, version: int = 4) -> bool:
     if (not version in [4, 6]):
         raise ValueError('Invalid IP version for validation')
     return version == get_ip_version(addr)
+
+
+'''
+=================================================================
+-- Declarar funcoes do dominio do problema ----------------------
+=================================================================
+'''
+
+'''
+    Exibe instrucoes de uso de comando: Inicializacao do programa
+'''
+def print_instructions_init() -> None:
+    print('Initialization command formats:')
+    print('\t- 01: "router.py <IP: string> <pi: float>"')
+    print('\t- 02: "router.py <IP: string> <pi: float> <startup_file: string>')
+    print('\t- 03: "router.py --addr <IP: string> --update-period <pi: float>')
+    print('\t- 04: "router.py --addr <IP: string> --update-period <pi: float> --startup-commands <startup_file: string>')
+
+'''
+    Exibe instrucoes de uso de comando: Adicao de roteaodr.
+'''
+def print_instructions_add() -> None:
+    print(COMMAND_ADD + ' command format:')
+    print('\t' + COMMAND_ADD + ' <IP: string> <weight: int>"')
+
+'''
+    Exibe instrucoes de uso de comando: Remocao de roteaodr.
+'''
+def print_instructions_del() -> None:
+    print(COMMAND_DEL + ' command format:')
+    print('\t' + COMMAND_DEL + ' <IP: string>')
+
+'''
+    Exibe instrucoes de uso de comando: Rastreamento de roteaodr.
+'''
+def print_instructions_trace() -> None:
+    print(COMMAND_TRACE + ' command format:')
+    print('\t' + COMMAND_TRACE + ' <IP: string>')
+
+'''
+    Centraliza chamadas para exibicao de instrucoes de uso.
+'''
+def print_instructions(help_command: str) -> None:
+
+    print('\nInstructions:')
+
+    if (not help_command or help_command == COMMAND_INIT):
+        print_instructions_init()
+    if (not help_command or help_command == COMMAND_ADD):
+        print_instructions_add()
+    if (not help_command or help_command == COMMAND_DEL):
+        print_instructions_del()
+    if (not help_command or help_command == COMMAND_TRACE):
+        print_instructions_trace()
 
 '''
 Valida & retorna parametros de linha de comando.
@@ -257,6 +311,53 @@ def set_route(addr_src: str, addr_dst: str, weight: int, is_neighbor: bool) -> N
     routing_table[addr_dst]['routes'] = routes
 
 '''
+    Exibe instrucoes de uso de comando: Inicializacao do programa
+'''
+def print_instructions_init() -> None:
+    print('Initialization command formats:')
+    print('\t- 01: "router.py <IP: string> <pi: float>"')
+    print('\t- 02: "router.py <IP: string> <pi: float> <startup_file: string>')
+    print('\t- 03: "router.py --addr <IP: string> --update-period <pi: float>')
+    print('\t- 04: "router.py --addr <IP: string> --update-period <pi: float> --startup-commands <startup_file: string>')
+
+'''
+    Exibe instrucoes de uso de comando: Adicao de roteaodr.
+'''
+def print_instructions_add() -> None:
+    print(COMMAND_ADD + ' command format:')
+    print('\t' + COMMAND_ADD + ' <IP: string> <weight: int>"')
+
+'''
+    Exibe instrucoes de uso de comando: Remocao de roteaodr.
+'''
+def print_instructions_del() -> None:
+    print(COMMAND_DEL + ' command format:')
+    print('\t' + COMMAND_DEL + ' <IP: string>')
+
+'''
+    Exibe instrucoes de uso de comando: Rastreamento de roteaodr.
+'''
+def print_instructions_trace() -> None:
+    print(COMMAND_TRACE + ' command format:')
+    print('\t' + COMMAND_TRACE + ' <IP: string>')
+
+'''
+    Centraliza chamadas para exibicao de instrucoes de uso.
+'''
+def print_instructions(help_command: str) -> None:
+
+    print('\nInstructions:')
+
+    if (not help_command or help_command == COMMAND_INIT):
+        print_instructions_init()
+    if (not help_command or help_command == COMMAND_ADD):
+        print_instructions_add()
+    if (not help_command or help_command == COMMAND_DEL):
+        print_instructions_del()
+    if (not help_command or help_command == COMMAND_TRACE):
+        print_instructions_trace()
+
+'''
     Identifica & rota para 01 determinado destino atraves do vizinho que informou o melhor caminho.
 '''
 def get_best_route(addr_dest: str) -> typing.Union[dict, None]:
@@ -323,53 +424,6 @@ def clear_outdated_destinations() -> None:
     for addr_dest in addr_to_pop_list:
         log_debug('Forgeting route ' + addr_dest + '. We haven''t heard of it for too long :(')
         routing_table.pop(addr_dest)
-
-'''
-    Exibe instrucoes de uso de comando: Inicializacao do programa
-'''
-def print_instructions_init() -> None:
-    print('Initialization command formats:')
-    print('\t- 01: "router.py <IP: string> <pi: float>"')
-    print('\t- 02: "router.py <IP: string> <pi: float> <startup_file: string>')
-    print('\t- 03: "router.py --addr <IP: string> --update-period <pi: float>')
-    print('\t- 04: "router.py --addr <IP: string> --update-period <pi: float> --startup-commands <startup_file: string>')
-
-'''
-    Exibe instrucoes de uso de comando: Adicao de roteaodr.
-'''
-def print_instructions_add() -> None:
-    print(COMMAND_ADD + ' command format:')
-    print('\t' + COMMAND_ADD + ' <IP: string> <weight: int>"')
-
-'''
-    Exibe instrucoes de uso de comando: Remocao de roteaodr.
-'''
-def print_instructions_del() -> None:
-    print(COMMAND_DEL + ' command format:')
-    print('\t' + COMMAND_DEL + ' <IP: string>')
-
-'''
-    Exibe instrucoes de uso de comando: Rastreamento de roteaodr.
-'''
-def print_instructions_trace() -> None:
-    print(COMMAND_TRACE + ' command format:')
-    print('\t' + COMMAND_TRACE + ' <IP: string>')
-
-'''
-    Centraliza chamadas para exibicao de instrucoes de uso.
-'''
-def print_instructions(help_command: str) -> None:
-
-    print('\nInstructions:')
-
-    if (not help_command or help_command == COMMAND_INIT):
-        print_instructions_init()
-    if (not help_command or help_command == COMMAND_ADD):
-        print_instructions_add()
-    if (not help_command or help_command == COMMAND_DEL):
-        print_instructions_del()
-    if (not help_command or help_command == COMMAND_TRACE):
-        print_instructions_trace()
 
 '''
     Valida linha para comando de exibir instrucoes.
