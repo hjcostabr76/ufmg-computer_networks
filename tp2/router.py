@@ -66,11 +66,20 @@ should_stop_threads = False
 '''
 
 '''
+    Avalia & infomra se 01 nivel de emissao de log esta habilitado.
+'''
+def is_log_level_valid(level: int) -> bool:
+    return (
+        level in [LOG_LEVEL_DEBUG, LOG_LEVEL_INFO, LOG_LEVEL_HINT, LOG_LEVEL_WARN, LOG_LEVEL_ERROR]
+        and level>= LOG_LEVEL
+    )
+
+'''
     Centraliza exibicao de mensagens de log.
 '''
 def log(level: str, msg) -> None:
 
-    if (level < LOG_LEVEL):
+    if (not is_log_level_valid(level)):
         return
 
     if (level == LOG_LEVEL_DEBUG):
@@ -83,8 +92,6 @@ def log(level: str, msg) -> None:
         level_txt = 'warn'
     elif (level == LOG_LEVEL_ERROR):
         level_txt = 'error'
-    else:
-        return log(LOG_LEVEL_WARN, 'Invalid log type: \'' + level + '\'')
 
     if (level == LOG_LEVEL_DEBUG):
         print('')
@@ -283,12 +290,12 @@ def get_cli_params() -> object:
 '''
     Inclui OU atualiza registro de 01 rota na tabela de roteamento.
 '''
-def set_route(addr_src: str, addr_dst: str, weight: int, is_neighbor: bool) -> None:
+def set_route(addr_src: str, addr_dest: str, weight: int, is_neighbor: bool) -> None:
     
-    destination: dict = routing_table.get(addr_dst)
+    destination: dict = routing_table.get(addr_dest)
     if (not destination):
         destination = { 'is_neighbor': is_neighbor }
-        routing_table[addr_dst] = destination
+        routing_table[addr_dest] = destination
 
     routes: list = destination.get('routes')
     if (not routes):
@@ -307,8 +314,8 @@ def set_route(addr_src: str, addr_dst: str, weight: int, is_neighbor: bool) -> N
         routes.append({ 'addr_src': addr_src, 'weight': weight, 'periods': 0 })
 
     if (is_neighbor):
-        routing_table[addr_dst]['is_neighbor'] = True
-    routing_table[addr_dst]['routes'] = routes
+        routing_table[addr_dest]['is_neighbor'] = True
+    routing_table[addr_dest]['routes'] = routes
 
 '''
     Exibe instrucoes de uso de comando: Inicializacao do programa
@@ -559,11 +566,7 @@ def execute_command_trace(addr_src: str, addr_target: str, hops: list = None) ->
             continue
         has_neighbors = True
 
-        if (addr_dest == addr_src):
-            continue
-
-        best_route = get_best_route(addr_dest)
-        if (best_route):
+        if (addr_dest != addr_src):
             send_msg_trace(addr_src, addr_target, hops if hops != None else [address])
             sent = True
 
@@ -654,24 +657,39 @@ def validate_msg(msg: dict) -> None:
 '''
 def send_msg(msg: dict) -> None:
     try:
+        
+        senderFD: socket.socket = None
 
         # Define vizinho para o qual essa msg sera enviada
-        best_route = get_best_route(msg.get('destination'))
+        addr_target = msg.get('destination')
+        best_route = get_best_route(addr_target)
         if (not best_route):
-            raise RuntimeError('No route known for destination ' + msg.get('destination'))
+            raise RuntimeError('No route known for destination ' + addr_target)
+
+        addr_dest = best_route.get('addr_src')
+        if (addr_dest == address):
+            addr_dest = addr_target
+
+        # Verifica se destino do envio eh nosso vizinho
+        if (not routing_table.get(addr_dest).get('is_neighbor')):
+            return log_warn('Message to ' + addr_dest + ' won\'t be sent as it is not a neighbor... :(')
 
         # Envia msg para vizinho que possui a melhor rota para o destino solicitado
         addr_family = socket.AF_INET if get_ip_version(address) == 4 else socket.AF_INET6
         senderFD = socket.socket(addr_family, socket.SOCK_DGRAM)
-        senderFD.sendto(json.dumps(msg).encode(), (best_route.get('addr_src'), PORT))
+        senderFD.sendto(json.dumps(msg).encode(), (addr_dest, PORT))
 
     except socket.error as error:
         log_error('Failure as sending ' + msg.get('type') + ' message')
-        if (LOG_LEVEL <= LOG_LEVEL_DEBUG):
+        if (is_log_level_valid(LOG_LEVEL_DEBUG)):
             raise error
 
+    except Exception as error:
+        log_error(error)
+
     finally:
-        senderFD.close()
+        if (senderFD):
+            senderFD.close()
 
 '''
     Encapsula procedimento de envio de mensagens: Dados.
@@ -696,21 +714,36 @@ def send_msg_trace(addr_src: str, addr_dest: str, hops: list) -> None:
     })
 
 '''
-    Encapsula procedimento de envio de mensagens: Update.
+    Encapsula procedimento de envio de mensagens: Update:
+    - Inclui peso para chegar a mim;
+    - Nao falo pro destino como chegar nele mesmo;
+    - O menor peso para 01 dos meus vizinhos eh o peso para chegar a mim + o menor peso para eu chegar nesse vizinho;
 '''
-def send_msg_update(addr_dest: str, weight: int) -> None:
+def send_msg_update(addr_dest: str) -> None:
 
     distances: dict = {}
-    distances[address] = weight
+    warn_msg_no_best_route = '[update: send] Something wrong isn''t right! No best route found for neighbor ' + addr_dest
 
+    # Inclui peso para chegar a mim
+    best_route_dest = get_best_route(addr_dest)
+    if (not best_route_dest):
+        return log_warn(warn_msg_no_best_route)
+    
+    distances[address] = best_route_dest.get('weight')
+
+    # Inclui menor peso chegar em cada 01 dos meus vizinhos
     for addr in routing_table.keys():
-        
+
         if (addr == addr_dest):
             continue
 
-        for route in routing_table.get(addr).get('routes'):
-            if (route.get('addr_src') != addr_dest):
-                distances[addr] = weight + route.get('weight')
+        best_route = get_best_route(addr)
+        if (not best_route):
+            log_warn(warn_msg_no_best_route)
+            continue
+
+        if (best_route.get('addr_src') != addr_dest):
+            distances[addr] = best_route_dest.get('weight') + best_route.get('weight')
 
     send_msg({
         'type': MSG_TYPE_UPDATE,
@@ -722,8 +755,12 @@ def send_msg_update(addr_dest: str, weight: int) -> None:
 '''
     Handler para avaliacao de mensgens: Dados.
 '''
-def handle_msg_data(addr_src: str, payload) -> None:
-    log_info('\t' + addr_src + ' says: ', payload)
+def handle_msg_data(msg: dict) -> None:
+    if (msg.get('destination') != address):
+        send_msg_data(msg.get('source'), msg.get('destination'), msg.get('payload'))
+    else:
+        if (is_log_level_valid(LOG_LEVEL_INFO)):
+            print('\t' + msg.get('source') + ' says: ', msg.get('payload'))
 
 '''
     Handler para avaliacao de mensgens: Trace.
@@ -740,11 +777,11 @@ def handle_msg_trace(msg: dict) -> None:
     send_msg_data(address, msg.get('source'), msg)
 
 '''
-    TODO: 2021-08-08 - ADD Descricao
+    Handler para avaliacao de mensgens: Update.
 '''
-def handle_msg_update(addr_src: str, distances: dict) -> None:
-    for addr_dest, weight in distances.items():
-        set_route(addr_src, addr_dest, weight, False)
+def handle_msg_update(msg: dict) -> None:
+    for addr_dest, weight in msg.get('distances').items():
+        set_route(msg.get('source'), addr_dest, weight, False)
 
 '''
     Handler generico para avaliacao de mensgens recebidas.
@@ -753,22 +790,25 @@ def handle_msg(raw_msg: bytes) -> None:
     try:
 
         msg: dict = json.loads(raw_msg)
-        addr_src = msg.get('source') if msg.get('source') else '?'
         validate_msg(msg)
         
         msg_type = msg.get('type')
 
         if (msg_type == MSG_TYPE_UPDATE):
-            handle_msg_update(msg.get('source'), msg.get('distances'))
+            handle_msg_update(msg)
         elif (msg_type == MSG_TYPE_TRACE):
-            handle_msg_trace(addr_src, msg)
+            handle_msg_trace(msg)
         elif (msg_type == MSG_TYPE_DATA):
-            handle_msg_data(addr_src, msg)
+            handle_msg_data(msg)
 
     except IOError as error:
-        log_warn('Falha ao receber mensagem de: ' + addr_src)
+        log_warn('Falha ao receber mensagem de: ' + msg.get('source') if msg.get('source') else '?')
         log_warn(error)
         log_debug(msg)
+
+    except Exception as error:
+        log_error(error)
+        log_debug(raw_msg)
 
 '''
     Thread para atualizacao periodica da tabela de roteamento:
@@ -780,36 +820,26 @@ def thread_update_table(pi: float) -> None:
 
     log_info('Ready to send update messages from: ' + address + ':' + str(PORT) + '...')
     
-    idled_periods = 0
-    idling_checkpoint = 8
-
     while not should_stop_threads:
-        
         time.sleep(pi)
-
-        # Atualiza rotas / destinos da tabela de roteamento            
+        
         for addr_dest in routing_table.keys():
-            
             clear_outdated_routes(addr_dest)
-            if (not routing_table.get(addr_dest).get('is_neighbor')):
-                continue
-
-            best_route = get_best_route(addr_dest)
-            if (best_route):
-                send_msg_update(addr_dest, best_route.get('weight'))
+            if (routing_table.get(addr_dest).get('is_neighbor')):
+                send_msg_update(addr_dest)
 
         clear_outdated_destinations()
 
 '''
     Thread para recebimento de mensagens de roteadores vizinhos.
 '''
-def thread_listen_msgs(addr: str) -> None:
+def thread_listen_msgs() -> None:
     try:
-        addr_family = socket.AF_INET if get_ip_version(addr) == 4 else socket.AF_INET6
+        addr_family = socket.AF_INET if get_ip_version(address) == 4 else socket.AF_INET6
         listenerFD = socket.socket(addr_family, socket.SOCK_DGRAM)
-        listenerFD.bind((addr, PORT))
+        listenerFD.bind((address, PORT))
 
-        log_info('Listening for update messages at: ' + addr + ':' + str(PORT) + '...')
+        log_info('Listening for update messages at: ' + address + ':' + str(PORT) + '...')
 
         while not should_stop_threads:
             raw_msg = listenerFD.recv(BUF_SIZE)
@@ -817,7 +847,7 @@ def thread_listen_msgs(addr: str) -> None:
 
     except socket.error as error:
         log_error('Update message listener failed to start')
-        if (LOG_LEVEL <= LOG_LEVEL_DEBUG):
+        if (is_log_level_valid(LOG_LEVEL_DEBUG)):
             raise error
 
     finally:
@@ -847,13 +877,14 @@ cli_arguments = None
 try:
 
     cli_arguments = get_cli_params()
+    address = cli_arguments.addr
 
     # Thread: Acoes de atualizacao da tabela de roteamento
-    update_sender = Thread(target=thread_update_table, args=(cli_arguments.addr, cli_arguments.pi))
+    update_sender = Thread(target=thread_update_table, args=(cli_arguments.pi,))
     update_sender.start()
 
     # Thread: ESCUTAR msgs de update
-    update_listener = Thread(target=thread_listen_msgs, args=(cli_arguments.addr,))
+    update_listener = Thread(target=thread_listen_msgs)
     update_listener.start()
 
     time.sleep(1)
@@ -878,11 +909,11 @@ try:
         elif (command_data.command == COMMAND_DEBUG_TABLE):
             execute_command_debug_table()
         elif (command_data.command == COMMAND_ADD):
-            execute_command_add(cli_arguments.addr, command_data.addr, command_data.weight)
+            execute_command_add(address, command_data.addr, command_data.weight)
         elif (command_data.command == COMMAND_DEL):
             execute_command_del(command_data.addr)
         elif (command_data.command == COMMAND_TRACE):
-            execute_command_trace(cli_arguments.addr, command_data.target)
+            execute_command_trace(address, command_data.target)
 
     log_info("\n-- THE END --\n")
 
@@ -893,7 +924,7 @@ except Exception as error:
     
     if (cli_arguments == None):
         print_instructions_init()
-    if (LOG_LEVEL <= LOG_LEVEL_DEBUG):
+    if (is_log_level_valid(LOG_LEVEL_DEBUG)):
         raise error
 
 finally:
