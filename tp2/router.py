@@ -26,7 +26,7 @@ LOG_LEVEL_INFO = 2
 LOG_LEVEL_HINT = 3
 LOG_LEVEL_WARN = 4
 LOG_LEVEL_ERROR = 5
-LOG_LEVEL = LOG_LEVEL_INFO # Para desbilitar: Setar como 0
+LOG_LEVEL = LOG_LEVEL_DEBUG # Para desbilitar: Setar como 0
 
 MSG_TYPE_DATA = 'data'
 MSG_TYPE_UPDATE = 'update'
@@ -55,6 +55,7 @@ COMMAND_ROUTER_LIST = [COMMAND_ADD, COMMAND_DEL, COMMAND_TRACE]
 
 routing_table: dict = {}
 main_loop_started = False
+should_stop_threads = False
 
 
 '''
@@ -89,7 +90,7 @@ def log(level: str, msg) -> None:
     
     print('[' + level_txt  + ']', msg)
 
-    if (main_loop_started and level != LOG_LEVEL_HINT):
+    if (main_loop_started and not level in [LOG_LEVEL_HINT, LOG_LEVEL_ERROR]):
         print(INPUT_CLI_MSG)
 
 
@@ -128,9 +129,10 @@ def log_error(msg) -> None:
     TODO: 2021-08-08 - ADD Descricao
 '''
 def log_messaging(type: str, log: str) -> None:
-    if (not type in ['send', 'recv']):
-        raise ValueError('Invalid messaging log type ' + type)
-    log_debug('[messaging:' + type + '] ' + log)
+    return
+    # if (not type in ['send', 'recv']):
+    #     raise ValueError('Invalid messaging log type ' + type)
+    # log_debug('[messaging:' + type + '] ' + log)
 
 '''
     Avalia 01 string generica & retorna sua versao de IP caso represente 01 IP valido.
@@ -258,6 +260,8 @@ def set_route(addr_src: str, addr_dst: str, weight: int, is_neighbor: bool) -> N
     if (not exists):
         routes.append({ 'addr_src': addr_src, 'weight': weight, 'periods': 0 })
 
+    if (is_neighbor):
+        routing_table[addr_dst]['is_neighbor'] = True
     routing_table[addr_dst]['routes'] = routes
 
 '''
@@ -284,7 +288,7 @@ def get_best_route(addr_dest: str) -> typing.Union[dict, None]:
 '''
     TODO: 2021-08-06 - ADD Descricao
 '''
-def clear_outdated_routes(addr_dest: str) -> None:
+def clear_outdated_routes(addr: str, addr_dest: str) -> None:
     
     destination = routing_table.get(addr_dest)
     if (not destination):
@@ -299,9 +303,11 @@ def clear_outdated_routes(addr_dest: str) -> None:
     for i in range(len(routes)):
 
         route = routes[i]
-        route['periods'] = route.get('periods') + 1
+        is_self_mapped_neighbor = destination.get('is_neighbor') and route.get('addr_src') == addr
+        if (not is_self_mapped_neighbor):
+            route['periods'] = route.get('periods') + 1
 
-        if (route.get('periods') > MAX_PERIODS):
+        if (route.get('periods') > MAX_PERIODS and not is_self_mapped_neighbor):
             routes_to_pop.append(i)
             continue
     
@@ -477,25 +483,50 @@ def execute_command_add(addr_src: str, addr_dst: str, weight: int) -> None:
     set_route(addr_src, addr_dst, weight, True)
     log_info('Address ' + addr_dst + ' successfully added to routing table...')
 
-
 '''
     Executa comando: Remover roteador na rede.
 '''
 def execute_command_del(addr: str) -> None:
-    if (routing_table.get(addr)):
-        routing_table.pop(addr)
-        log_info('Address ' + addr + ' successfully removed from routing table...')
-    else:
-        log_warn('Address ' + addr + ' does not exists in routing table...')
+
+    destination = routing_table.get(addr)
+    if (not destination):
+        return log_warn('Address ' + addr + ' does not exists in routing table...')
+
+    if (not destination.get('is_neighbor')):
+        return log_warn('Address ' + addr + ' is not a neighbor one...')
+
+    routing_table.pop(addr)
+    log_info('Address ' + addr + ' successfully removed from routing table...')
 
 '''
     Executa comando: Rastrear 01 roteador na rede.
 '''
-def execute_command_trace(src: str, target: str, hops: list = None) -> None:
+def execute_command_trace(is_origin: bool, addr_src: str, addr_target: str, hops: list = None) -> None:
+    
+    has_neighbors = False
+    sent = False
+
     for addr_dest in routing_table.keys():
+
+        if (not routing_table.get(addr_dest).get('is_neighbor')):
+            continue
+        has_neighbors = True
+
+        if (addr_dest == addr_src):
+            continue
+
         best_route = get_best_route(addr_dest)
         if (best_route):
-            send_msg_trace(src, addr_dest, target, hops if hops != None else [])
+            send_msg_trace(addr_src, addr_dest, addr_target, hops if hops != None else [addr_src])
+            sent = True
+
+    if (not has_neighbors):
+        return log_warn('No neighbors to send trace request')
+    if (not sent):
+        return log_warn('Somehing wrong isn''t right! No messages sent for this trace request :(')
+    
+    if (is_origin):
+        log_info('Trace request successfully sent')
 
 '''
     Validador de mensagens: Dados.
@@ -513,7 +544,7 @@ def validate_msg_trace(msg: dict) -> None:
 
     if (hops == None):
         raise IOError('Trace Message: property "hops" is missing')
-    if (type(hops) != 'list' or not len(msg.get('hops'))):
+    if (type(hops) != list or not len(msg.get('hops'))):
         raise IOError('Trace Message: Property "hops" must be a non empty list')
 
     for i in range(len(hops)):
@@ -589,16 +620,16 @@ def send_msg(src: str, dest: str, msg: dict) -> None:
 '''
     Encapsula procedimento de envio de mensagens: Dados.
 '''
-def send_msg_data(src: str, dest: str, payload) -> None:
+def send_msg_data(addr_src: str, addr_dest: str, payload) -> None:
 
     msg = {
         'type': MSG_TYPE_DATA,
-        'source': src,
-        'destination': dest,
+        'source': addr_src,
+        'destination': addr_dest,
         'payload': payload,
     }
 
-    send_msg(src, dest, msg)
+    send_msg(addr_src, addr_dest, msg)
 
 '''
     Encapsula procedimento de envio de mensagens: Trace.
@@ -615,7 +646,7 @@ def send_msg_trace(src: str, dest: str, target: str, hops: list) -> None:
     send_msg(src, dest, msg)
 
 '''
-    TODO: 2021-08-08 - ADD Descricao
+    Encapsula procedimento de envio de mensagens: Update.
 '''
 def send_msg_update(addr_src: str, addr_dest: str, weight: int) -> None:
 
@@ -645,28 +676,28 @@ def send_msg_update(addr_src: str, addr_dest: str, weight: int) -> None:
     Handler para avaliacao de mensgens: Dados.
 '''
 def handle_msg_data(src: str, payload) -> None:
-    log_debug('\t' + src + ' says: ', payload)
+    log_info('\t' + src + ' says: ', payload)
 
 '''
     Handler para avaliacao de mensgens: Trace.
 '''
-def handle_msg_trace(src: str, msg: dict) -> None:
+def handle_msg_trace(addr_src: str, msg: dict) -> None:
     
     # Propaga msg de rastreamento (quando alvo for outro roteador)
-    hops = msg.get('hops') + [src]
-    if (msg.get('destination') != src):
-        return execute_command_trace(src, msg.get('destination'), hops)
+    hops = msg.get('hops') + [addr_src]
+    if (msg.get('destination') != addr_src):
+        return execute_command_trace(False, addr_src, msg.get('destination'), hops)
     
     # Responde msg de rastreamento (quando alvo for este roteador)
     msg['hops'] = hops
-    send_msg_data(src, msg.get('source'), msg)
+    send_msg_data(addr_src, msg.get('source'), msg)
 
 '''
     TODO: 2021-08-08 - ADD Descricao
 '''
 def handle_msg_update(addr_src: str, distances: dict) -> None:
     for addr_dest, weight in distances.items():
-        set_route(addr_src, addr_dest, weight, addr_src == addr_dest)
+        set_route(addr_src, addr_dest, weight, False)
 
 '''
     Handler generico para avaliacao de mensgens recebidas.
@@ -689,8 +720,8 @@ def handle_msg(raw_msg: bytes) -> None:
             handle_msg_data(addr_src, msg)
 
     except IOError as error:
-        log_error('Falha ao receber mensagem de: ' + addr_src)
-        log_error(error)
+        log_warn('Falha ao receber mensagem de: ' + addr_src)
+        log_warn(error)
         log_debug(msg)
 
 '''
@@ -706,7 +737,7 @@ def thread_update_table(addr: str, pi: float) -> None:
     idled_periods = 0
     idling_checkpoint = 8
 
-    while True:
+    while not should_stop_threads:
         
         time.sleep(pi)
         addr_dest_list = routing_table.keys()
@@ -722,7 +753,7 @@ def thread_update_table(addr: str, pi: float) -> None:
         # Atualiza rotas / destinos da tabela de roteamento            
         for addr_dest in addr_dest_list:
             
-            clear_outdated_routes(addr_dest)
+            clear_outdated_routes(addr, addr_dest)
             
             if (not routing_table.get(addr_dest).get('is_neighbor')):
                 continue
@@ -744,7 +775,7 @@ def thread_listen_msgs(addr: str) -> None:
 
         log_info('Listening for update messages at: ' + addr + ':' + str(PORT) + '...')
 
-        while True:
+        while not should_stop_threads:
             raw_msg = listenerFD.recv(BUF_SIZE)
             handle_msg(raw_msg)
 
@@ -756,6 +787,14 @@ def thread_listen_msgs(addr: str) -> None:
     finally:
         listenerFD.close()
 
+'''
+    Executa encerramento das threads abertas
+'''
+def threads_finish_em_all() -> bool:
+    should_stop_threads = True
+    while update_sender.is_alive() or update_listener.is_alive():
+        time.sleep(.001)
+    return True
 
 '''
 =================================================================
@@ -807,7 +846,9 @@ try:
         elif (command_data.command == COMMAND_DEL):
             execute_command_del(command_data.addr)
         elif (command_data.command == COMMAND_TRACE):
-            execute_command_trace(command_data.addr, command_data.target)
+            execute_command_trace(True, cli_arguments.addr, command_data.target)
+
+    log_info("\n-- THE END --\n")
 
 except Exception as error:
     
@@ -820,4 +861,5 @@ except Exception as error:
         raise error
 
 finally:
-    log_info("\n-- THE END --\n")
+    threads_finish_em_all()
+    sys.exit()
