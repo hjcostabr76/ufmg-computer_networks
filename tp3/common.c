@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -147,21 +148,23 @@ int posixListen(const int port, const struct timeval *timeout, const int maxConn
 // 	return socketFD;
 // }
 
-char* posixGetSocketAddressString(int socket) {
+bool posixSetSocketAddressString(int socket, char *addrStr) {
 
-	socklen_t* restrict socketLength;
-	struct sockaddr *addr;
-	const strLength = 200;
-	char addrStr[strLength];
-    
-	memset(addr, 0, sizeof(struct sockaddr_in));
-    memset(addrStr, 0, strLength);
-    getsockname(socket, addr, socketLength);
+	struct sockaddr_storage storage;
+	memset(&storage, 0, sizeof(storage));
+	
+	struct sockaddr *addr = (struct sockaddr *)&storage;
+	memset(addr, 0, sizeof(*addr));
 
-	if (addr->sa_family == AF_INET)
+	socklen_t socketLength = sizeof(addr);
+	getsockname(socket, (struct sockaddr*)addr, &socketLength);
+
+	if (((struct sockaddr *)addr)->sa_family == AF_INET) {
 		inet_ntop(AF_INET, &(((struct sockaddr_in *)addr)->sin_addr), addrStr, INET_ADDRSTRLEN + 1);
-	if (addr->sa_family == AF_INET6)
+	} else if (((struct sockaddr *)addr)->sa_family == AF_INET6) {
 		inet_ntop(AF_INET6, &(((struct sockaddr_in6 *)addr)->sin6_addr), addrStr, INET6_ADDRSTRLEN + 1);
+	} else
+		return false;
 
-	return addrStr;
+	return true;
 }

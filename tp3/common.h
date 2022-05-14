@@ -2,6 +2,7 @@
 
 // #include <stdio.h>
 // #include <stdlib.h>
+#include <stdbool.h>
 
 // #include <sys/socket.h>
 // #include <arpa/inet.h>
@@ -66,4 +67,4 @@ int posixListen(const int port, const struct timeval *timeout, const int maxConn
 /**
  * TODO: 2022-05-13 - ADD Descricao
  */
-char* posixGetSocketAddressString(int socket);
+bool posixSetSocketAddressString(int socket, char *boundAddr);

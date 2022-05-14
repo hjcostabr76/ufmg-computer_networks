@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <pthread.h>
 #include <sys/socket.h>
 #include <inttypes.h>
@@ -56,8 +57,9 @@ enum ServerRecvValidationEnum {
  * TODO: 2021-06-03 - ADD Descriptions
  */
 
-int servValidateInput(int argc, char **argv);
+bool servValidateInput(int argc, char **argv);
 void servExplainAndDie(char **argv);
+int getIpType(const char *ipTypeStr);
 // void *servThreadConnHandler(void *data);
 
 void servRecvParam(
@@ -74,6 +76,10 @@ void servRecvParam(
  * ------------------------------------------------
  */
 
+/**
+ * TODO: 2022-05-14 - Diferenciar questao dos tipos de IP
+ */
+
 int main(int argc, char **argv) {
 
     comDebugStep("\nStarting...\n\n");
@@ -86,7 +92,7 @@ int main(int argc, char **argv) {
     // Create socket
     const int notificationMsgLen = 500;
     char notificationMsg[notificationMsgLen];
-    const int port = atoi(argv[1]);
+    const int port = atoi(argv[2]);
 
     struct timeval timeoutConn;
     memset(&timeoutConn, 0, sizeof(timeoutConn));
@@ -98,8 +104,14 @@ int main(int argc, char **argv) {
     int socket = posixListen(port, &timeoutConn, MAX_CONNECTIONS);
 
     if (DEBUG_ENABLE) {
-        char *boundAddr = posixGetSocketAddressString(socket);
+
+        char boundAddr[200];
         memset(notificationMsg, 0, notificationMsgLen);
+        if (!posixSetSocketAddressString(socket, boundAddr)) {
+            sprintf(notificationMsg, "\nFailure as trying to exhibit bound address...\n");
+            comLogErrorAndDie(notificationMsg);
+        }
+
         sprintf(notificationMsg, "\nAll set! Server is bound to %s:%d\nWaiting for connections...\n", boundAddr, port);
         comDebugStep(notificationMsg);
     }
@@ -153,7 +165,11 @@ int main(int argc, char **argv) {
     //     pthread_create(&tid, NULL, servThreadConnHandler, clientData);
     // }
 
-    // exit(EXIT_SUCCESS);
+    // Encerra conexao
+	comDebugStep("\nClosing connection...\n");
+    close(socket);
+
+    exit(EXIT_SUCCESS);
 }
 
 /**
@@ -255,21 +271,44 @@ int main(int argc, char **argv) {
  * ------------------------------------------------
  */
 
-int servValidateInput(int argc, char **argv) {
+bool servValidateInput(int argc, char **argv) {
 
-	if (argc != 2) {
+	if (argc != 3) {
         comDebugStep("Invalid argc!\n");
-		return 0;
+		return false;
     }
 
+    // Validate ip type
+	if (getIpType(argv[1]) == -1) {
+		comDebugStep("Invalid IP type!\n");
+		return false;
+	}
+
+    // Validate port
 	const char *portStr = argv[1];
 	if (!comValidateNumericString(portStr, strlen(portStr))) {
 		comDebugStep("Invalid Port!\n");
-		return 0;
+		return false;
 	}
 
-	return 1;
+	return true;
 }
+
+/**
+ * @brief Get the Ip Type constant value;
+ * In case of invalid string, returns -1;
+ * 
+ * @param ipTypeStr 
+ * @return int 
+ */
+int getIpType(const char *ipTypeStr) {
+    if (strcmp(ipTypeStr, "v4") == 0)
+        return AF_INET;
+    if (strcmp(ipTypeStr, "v6") == 0)
+        return AF_INET6;
+    return -1;
+}
+
 
 /**
  * TODO: 2022-05-12 - ADD Descricao
