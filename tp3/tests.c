@@ -56,7 +56,7 @@ typedef struct {
 bool comRegexMatch(const char* pattern, const char* str, char errorMsg[100]);
 bool comStrStartsWith(const char *target, const char *prefix);
 char* comStrGetSubstring(const char *src, char *dst, size_t start, size_t end);
-void strSplit(const char* source, char** dest, const char delimiter, int *tokensCount);
+void strSplit(char* source, char** dest, const char delimiter[1], int *tokensCount);
 Command getCommand();
 
 /**
@@ -105,7 +105,7 @@ Command getCommand(const char* input) {
 
     int inputSensorsCount;
     char sensorIds[4][2];
-    strSplit(sensorsListStr, sensorIds, " ", &inputSensorsCount);
+    strSplit(sensorsListStr, (char **)sensorIds, " ", &inputSensorsCount);
     
     for (int i = 0; i < SENSOR_COUNT; i++)
         cmd.sensors[i] = false;
@@ -154,14 +154,14 @@ char* comStrGetSubstring(const char *src, char *dst, size_t start, size_t end) {
 }
 
 
-void strSplit(const char* source, char** dest, const char delimiter, int *tokensCount) {
+void strSplit(char* source, char** dest, const char delimiter[1], int *tokensCount) {
     *tokensCount = 0;
     
     while (true) {
         char *token = strtok(source, delimiter);
         if (token == NULL)
             break;
-        *tokensCount++;
+        *tokensCount = *tokensCount + 1;
         strcpy(dest[*tokensCount], token);
     }
 }
@@ -223,7 +223,6 @@ void testCommandAdd(void) {
         
         CmdTest test = validTests[i];
         test.cmd.isValid = true;
-        test.cmd.name = CMD_NAME[i];
         strcpy(test.cmd.name, CMD_NAME[i]);
 
         Command cmd = getCommand(test.inputTxt);
