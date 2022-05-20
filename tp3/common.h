@@ -1,70 +1,90 @@
 #pragma once
 
-// #include <stdio.h>
-// #include <stdlib.h>
 #include <stdbool.h>
-
-// #include <sys/socket.h>
-// #include <arpa/inet.h>
 #include <sys/select.h>
-// #include <unistd.h>
 
-// #include <string.h>
-// #include <time.h>
-// #include <errno.h>
-// #include <pthread.h>
-// #include <inttypes.h>
+#include <stdio.h>
+
+/**
+ * ------------------------------------------------
+ * == CONSTS ======================================
+ * ------------------------------------------------
+ */
 
 #define DEBUG_ENABLE 1
+#define BUF_SIZE 500
+
 #define MAX_CONNECTIONS 1
 #define TIMEOUT_CONN_SECS 15
 
-/**
- * TODO: 2022-05-13 - Delete unused consts...
- */
-#define TIMEOUT_TRANSFER_SECS 2
+#define CMD_COUNT 5
+#define SENSOR_COUNT 4
 
-#define BUF_SIZE 500
-#define SIZE_NUMBER_STR 10
+/**
+ * TODO: 2022-05-20 - Check if we need it all
+ */
 
 #define ASCII_NUMBER_FIRST 48
 #define ASCII_NUMBER_LAST 57
 #define ASCII_LC_LETTER_LAST 122
 #define ASCII_LC_LETTER_FIRST 97
 
+extern const char EQP_IDS[4][2];
+extern const char CMD_NAME[5][15];
+extern const char CMD_PATTERN[CMD_COUNT][45];
+
+typedef enum { CMD_CODE_ADD, CMD_CODE_RM, CMD_CODE_LIST, CMD_CODE_READ, CMD_CODE_KILL } CmdCodeEnum;
+
 /**
- * TODO: 2021-06-03 - ADD Descricao
+ * ------------------------------------------------
+ * == ABSTRACTS ===================================
+ * ------------------------------------------------
  */
+
+typedef struct {
+    bool isValid;
+    CmdCodeEnum code;
+    char name[15]; // TODO: Is it really necessary?
+    char equipment[3];
+    bool sensors[SENSOR_COUNT];
+} Command;
+
+typedef struct{
+    char id[3];
+    bool sensors[SENSOR_COUNT];
+} Equipment;
+
+
+/**
+ * ------------------------------------------------
+ * == HEADERS =====================================
+ * ------------------------------------------------
+ */
+
+/** -- DEBUG ------------ */
+
+void comDebugStep(const char *text);
 void comLogErrorAndDie(const char *msg);
 
-/**
- * TODO: 2021-06-03 - ADD Descricao
- */
-void comDebugStep(const char *text);
+/** -- MAIN ------------- */
 
-/**
- * TODO: 2021-06-03 - ADD Descricao
- */
-int comValidateLCaseString(const char *string, const int strLength);
+Command getGenericCommand(void);
+Command getEmptyCommand(CmdCodeEnum code);
+Command getCommand(const char* input);
 
-/**
- * TODO: 2021-06-03 - ADD Descricao
- */
-int comValidateNumericString(const char *string, const int strLength);
+/** -- NETWORK ---------- */
 
-
-/**
- * TODO: 2022-05-13 - ADD Descricao
- */
 // int posixConnect(const int port, const char *addrStr, const struct timeval *timeout);
+bool netSetSocketAddressString(int socket, char *boundAddr);
+int netListen(const int port, const struct timeval *timeout, const int maxConnections);
 
-/**
- * TODO: 2022-05-13 - ADD Descricao
- */
+/** -- STRING ----------- */
 
-int posixListen(const int port, const struct timeval *timeout, const int maxConnections);
-
-/**
- * TODO: 2022-05-13 - ADD Descricao
- */
-bool posixSetSocketAddressString(int socket, char *boundAddr);
+// int comValidateLCaseString(const char *string, const int strLength);
+bool strReadFromStdIn(char *buffer, size_t buffLength);
+bool strRegexMatch(const char* pattern, const char* str, char errorMsg[100]);
+bool strStartsWith(const char *a, const char *b);
+bool strStartsWith(const char *target, const char *prefix);
+bool strValidateNumeric(const char *string, const int strLength);
+char** strSplit(char* source, const char delimiter[1], const int maxTokens, const int maxLength, int *tokensCount);
+void strGetSubstring(const char *src, char *dst, size_t start, size_t end);

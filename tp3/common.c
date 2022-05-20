@@ -3,18 +3,38 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
-
 #include <sys/socket.h>
 #include <arpa/inet.h>
-// #include <sys/select.h>
-// #include <unistd.h>
-
 #include <string.h>
-// #include <time.h>
-// #include <errno.h>
+#include <regex.h>
 
-// #include <pthread.h>
-// #include <inttypes.h>
+/**
+ * ------------------------------------------------
+ * == CONSTS ======================================
+ * ------------------------------------------------
+ */
+
+const char EQP_IDS[4][2] = { {"01"}, {"02"}, {"03"}, {"04"} };
+
+/**
+ * TODO: 2022-05-20 - Do we really need this?
+ */
+const char CMD_NAME[CMD_COUNT][15] = { {"add sensor"}, {"remove sensor"}, {"list sensors"}, {"read"}, {"kill"} };
+const char CMD_PATTERN[CMD_COUNT][45] = {
+    {"^add sensor (0[1234] ){1,4}in 0[1234]$"},
+    {"^remove sensor (0[1234] ){1,4}in 0[1234]$"},
+    {"^list sensors in 0[1234]$"},
+    {"^read (0[1234] ){1,4}in 0[1234]$"},
+    {"^kill$"}
+};
+const char CMD_PATTERN_END[] = " in ##";
+
+
+/**
+ * ------------------------------------------------
+ * == DEBUG =======================================
+ * ------------------------------------------------
+ */
 
 void comLogErrorAndDie(const char *msg) {
 	perror(msg);
@@ -26,31 +46,91 @@ void comDebugStep(const char *text) {
 		printf("%s", text);
 }
 
-int comValidateLCaseString(const char *string, const int strLength) {
+/**
+ * ------------------------------------------------
+ * == MAIN ========================================
+ * ------------------------------------------------
+ */
 
-	for (int i; i < strLength; i++) {
-		if ((int)string[i] < ASCII_LC_LETTER_FIRST || (int)string[i] > ASCII_LC_LETTER_LAST)
-			return 0;
-	}
-
-	return 1;
+Command getGenericCommand(void) {
+    Command command;
+    command.isValid = false;
+    memset(command.name, '\0', sizeof(command.name));
+    memset(command.equipment, '\0', sizeof(command.equipment));
+    for (int i = 0; i < SENSOR_COUNT; i++)
+        command.sensors[i] = false;
+    return command;
 }
 
-int comValidateNumericString(const char *string, const int strLength) {
-
-	for (int i; i < strLength; i++) {
-		if ((int)string[i] < ASCII_NUMBER_FIRST || (int)string[i] > ASCII_NUMBER_LAST)
-			return 0;
-	}
-
-	return 1;
+Command getEmptyCommand(CmdCodeEnum code) {
+    Command command = getGenericCommand();
+    command.code = code;
+    strcpy(command.name, CMD_NAME[code]);
+    return command;
 }
 
-short int posixIsValidAddrFamily(const int addrFamily) {
+Command getCommand(const char* input) {
+
+    Command cmd;
+    cmd.isValid = false;
+    
+    // Identify command type
+    for (int i = 0; i < CMD_COUNT; i++) {
+
+        char regexMsg[100];
+        cmd.isValid = strRegexMatch(CMD_PATTERN[i], input, regexMsg);
+        if (!cmd.isValid)
+            continue;
+
+		cmd.isValid = true;
+		cmd.code = i;
+		strcpy(cmd.name, CMD_NAME[i]);
+        break;
+	}
+
+	if (!cmd.isValid || cmd.code == CMD_CODE_KILL)
+        return cmd;
+
+    // Determine equipment
+
+    char inputCopy[100];
+    strcpy(inputCopy, input);
+
+    int inputArgsC;
+    char** inputArgs = strSplit(inputCopy, " ", 8, 8, &inputArgsC);
+    strcpy(cmd.equipment, inputArgs[inputArgsC - 1]);
+
+    if (cmd.code == CMD_CODE_LIST)
+        return cmd;
+
+    // Determine sensors    
+    for (int i = 0; i < SENSOR_COUNT; i++)
+        cmd.sensors[i] = false;
+
+    int firstSensorIdx = cmd.code == CMD_CODE_READ ? 1 : 2;
+    for (int i = firstSensorIdx; i < inputArgsC - 2; i++) {
+        int sensorCode = atoi(inputArgs[i]) - 1;
+        if (cmd.sensors[sensorCode]) {
+            cmd.isValid = false;
+            break;
+        }
+        cmd.sensors[sensorCode] = true;
+    }
+    
+    return cmd;
+}
+
+/**
+ * ------------------------------------------------
+ * == NETWORK =====================================
+ * ------------------------------------------------
+ */
+
+short int netIsValidAddrFamily(const int addrFamily) {
 	return (addrFamily == AF_INET || addrFamily == AF_INET6);
 }
 
-int posixListen(const int port, const struct timeval *timeout, const int maxConnections) {
+int netListen(const int port, const struct timeval *timeout, const int maxConnections) {
 
 	// Validate params
 	if (!port)
@@ -99,56 +179,7 @@ int posixListen(const int port, const struct timeval *timeout, const int maxConn
 	return sock;
 }
 
-// int posixConnect(const int port, const char *addrStr, const struct timeval *timeout) {
-
-// 	// Valida endereco
-// 	if (!port)
-// 		comLogErrorAndDie("invalid connection port");
-
-//     // Determina protocolo
-// 	struct sockaddr_storage addrStorage;
-
-//     struct in_addr inaddr4; // 32-bit IP address
-// 	const int isIpv4 = inet_pton(AF_INET, addrStr, &inaddr4);
-
-// 	struct in6_addr inaddr6; // 128-bit IPv6 address
-// 	const int isIpv6 = !isIpv4 ? inet_pton(AF_INET6, addrStr, &inaddr6) : 0;
-
-// 	if (!isIpv4 && !isIpv6)
-// 		comLogErrorAndDie("Invalid address family to create connection socket");
-
-// 	// Cria socket
-// 	int socketFD = socket(isIpv4 ? AF_INET : AF_INET6, SOCK_STREAM, 0);
-// 	if (socketFD == -1)
-// 		comLogErrorAndDie("Failure as creating connection socket [1]");
-
-// 	if (setsockopt(socketFD, SOL_SOCKET, SO_RCVTIMEO, timeout, sizeof(*timeout)) != 0)
-// 		comLogErrorAndDie("Failure as creating connection socket [2]");
-
-// 	// Trata ipv4
-//     if (isIpv4) {
-// 		struct sockaddr_in *addr4 = (struct sockaddr_in *)&addrStorage;
-//         addr4->sin_family = AF_INET;
-//         addr4->sin_port = htons(port);
-//         addr4->sin_addr = inaddr4;
-
-//     // Trata ipv6
-//     } else {
-// 		struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)&addrStorage;
-//         addr6->sin6_family = AF_INET6;
-//         addr6->sin6_port = htons(port);
-//         // addr6->sin6_addr = inaddr6
-//         memcpy(&(addr6->sin6_addr), &inaddr6, sizeof(inaddr6));
-//     }
-
-// 	// Cria conexao
-// 	if (connect(socketFD, (struct sockaddr *)(&addrStorage), sizeof(addrStorage)) != 0)
-// 		comLogErrorAndDie("Failure as creating connection socket [3]");
-
-// 	return socketFD;
-// }
-
-bool posixSetSocketAddressString(int socket, char *addrStr) {
+bool netSetSocketAddressString(int socket, char *addrStr) {
 
 	struct sockaddr_storage storage;
 	memset(&storage, 0, sizeof(storage));
@@ -167,4 +198,83 @@ bool posixSetSocketAddressString(int socket, char *addrStr) {
 		return false;
 
 	return true;
+}
+
+/**
+ * ------------------------------------------------
+ * == STRING ======================================
+ * ------------------------------------------------
+ */
+
+bool strValidateNumeric(const char *string, const int strLength) {
+	for (int i; i < strLength; i++) {
+		if ((int)string[i] < ASCII_NUMBER_FIRST || (int)string[i] > ASCII_NUMBER_LAST)
+			return false;
+	}
+	return true;
+}
+
+bool strReadFromStdIn(char *buffer, size_t buffLength) {
+    if (!fgets(buffer, buffLength, stdin))
+		return false; // Error...
+	int lastCharIdx = strcspn(buffer, "\n");
+	buffer[lastCharIdx] = '\0';
+	return true;
+}
+
+bool strStartsWith(const char *target, const char *prefix) {
+   return strncmp(target, prefix, strlen(prefix)) == 0;
+}
+
+void strGetSubstring(const char *src, char *dst, size_t start, size_t end) {
+    strncpy(dst, src + start, end - start);
+}
+
+char** strSplit(char* source, const char delimiter[1], const int maxTokens, const int maxLength, int *tokensCount) {
+    
+    *tokensCount = 0;
+    char** tokens = malloc(maxTokens * sizeof(char*));
+    
+    char *token = strtok(source, delimiter);
+    if (token == NULL)
+        return tokens;
+
+    while (token != NULL && *tokensCount < maxTokens) {
+
+        tokens[*tokensCount] = malloc(maxLength * sizeof(char));
+        memset(tokens[*tokensCount], '\n', maxLength * sizeof(char));
+        strcpy(tokens[*tokensCount], token);
+        
+        *tokensCount = *tokensCount + 1;
+        token = strtok(NULL, delimiter);
+    }
+
+    return tokens;
+}
+
+bool strRegexMatch(const char* pattern, const char* str, char errorMsg[100]) {
+
+    regex_t regex;
+    memset(errorMsg, 0, 100);
+    
+    // Compile
+    int regStatus = regcomp(&regex, pattern, REG_EXTENDED);
+    if (regStatus != 0) {
+        sprintf(errorMsg, "Compiling error");
+        return false;
+    }
+
+    // Execute
+    regStatus = regexec(&regex, str, 0, NULL, 0);
+    
+    bool isSuccess = regStatus == 0;
+    if (!isSuccess && regStatus != REG_NOMATCH) { // Error
+        char aux[100];
+        regerror(regStatus, &regex, aux, 100);
+        sprintf(errorMsg, "Match error: %s\n", aux);
+    }
+
+    // Free memory allocated to the pattern buffer by regcomp()
+    regfree(&regex);
+    return isSuccess;
 }
