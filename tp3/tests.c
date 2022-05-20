@@ -264,7 +264,7 @@ void testCommandAdd(void) {
 
     n = -1;
     testsCount = 13;
-    isVerbose = true;
+    // isVerbose = true;
     CmdTest invalidTests[testsCount];
 
     // New test...
@@ -351,7 +351,7 @@ void testCommandAdd(void) {
 bool runBulkTest(const char* title, CmdTest tests[], const int nTests, const bool isValid) {
 
     int failureCount = 0;
-    printf("\n----- New Test: %s [%s examples] ----------\n", title, isValid ? "valid" : "invalid");
+    printf("\n\n----- New Test: %s [%s examples] ------------", title, isValid ? "valid" : "invalid");
 
     for (int i = 0; i < nTests; i++) {
         
