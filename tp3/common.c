@@ -71,8 +71,7 @@ Command getEmptyCommand(CmdCodeEnum code) {
 
 Command getCommand(const char* input) {
 
-    Command cmd;
-    cmd.isValid = false;
+    Command cmd = getGenericCommand();
     
     // Identify command type
     for (int i = 0; i < CMD_COUNT; i++) {
@@ -92,18 +91,17 @@ Command getCommand(const char* input) {
         return cmd;
 
     // Determine equipment
-
     char inputCopy[100];
     strcpy(inputCopy, input);
 
     int inputArgsC;
-    char** inputArgs = strSplit(inputCopy, " ", 8, 8, &inputArgsC);
+    char** inputArgs = strSplit(inputCopy, " ", 8, 100, &inputArgsC);
     strcpy(cmd.equipment, inputArgs[inputArgsC - 1]);
 
     if (cmd.code == CMD_CODE_LIST)
         return cmd;
 
-    // Determine sensors    
+    // Determine sensors
     for (int i = 0; i < SENSOR_COUNT; i++)
         cmd.sensors[i] = false;
 
