@@ -25,7 +25,7 @@ const char CMD_PATTERN[CMD_COUNT][45] = {
     {"^read (0[1234] ){1,4}in 0[1234]$"},
     {"^kill$"}
 };
-const char CMD_PATTERN_END[] = "in ##";
+const char CMD_PATTERN_END[] = " in ##";
 
 /**
  * ------------------------------------------------
@@ -36,8 +36,8 @@ const char CMD_PATTERN_END[] = "in ##";
 typedef struct {
     bool isValid;
     CmmdCodeEnum code;
-    char* name; // TODO: Is it really necessary?
-    char equipment[2] ;
+    char name[15]; // TODO: Is it really necessary?
+    char equipment[3];
     bool sensors[SENSOR_COUNT];
 } Command;
 
@@ -55,8 +55,8 @@ typedef struct {
 
 bool comRegexMatch(const char* pattern, const char* str, char errorMsg[100]);
 bool comStrStartsWith(const char *target, const char *prefix);
-char* comStrGetSubstring(const char *src, char *dst, size_t start, size_t end);
-void strSplit(char* source, char** dest, const char delimiter[1], int *tokensCount);
+void comStrGetSubstring(const char *src, char *dst, size_t start, size_t end);
+char** strSplit(char* source, const char delimiter[1], const int maxTokens, const int maxLength, int *tokensCount);
 Command getCommand();
 
 /**
@@ -84,28 +84,27 @@ Command getCommand(const char* input) {
         break;
 	}
 
-    // Check if is there anything else to parse
 	if (!cmd.isValid || strcmp(cmd.name, CMD_NAME[CMD_CODE_KILL]) == 0)
         return cmd;
 
     // Determine equipment
-    int eqIdLength = 2;
+    int equipIdLength = 2;
     int inputLength = strlen(input);
-    comStrGetSubstring(input, cmd.equipment, inputLength - eqIdLength, inputLength);
+    memset(cmd.equipment, '\0', sizeof(cmd.equipment));
+    comStrGetSubstring(input, cmd.equipment, inputLength - equipIdLength, inputLength);
 
-    // Check if is there sensors to identify
 	if (strcmp(cmd.name, CMD_NAME[CMD_CODE_LIST]) == 0)
         return cmd;
-    
+
     // Determine Sensors
-    char sensorsListStr[inputLength];
-    int sensorsChar1 = strlen(cmd.name);
+    int sensorsChar1 = strlen(cmd.name) + 1;
     int sensorsCharLast = inputLength - strlen(CMD_PATTERN_END);
+    char sensorsListStr[sensorsCharLast - sensorsChar1];
+    memset(sensorsListStr, '\0', strlen(sensorsListStr));
     comStrGetSubstring(input, sensorsListStr, sensorsChar1, sensorsCharLast);
 
     int inputSensorsCount;
-    char sensorIds[4][2];
-    strSplit(sensorsListStr, (char **)sensorIds, " ", &inputSensorsCount);
+    char** sensorIds = strSplit(sensorsListStr, " ", SENSOR_COUNT, 3, &inputSensorsCount);
     
     for (int i = 0; i < SENSOR_COUNT; i++)
         cmd.sensors[i] = false;
@@ -149,21 +148,26 @@ bool comStrStartsWith(const char *target, const char *prefix) {
    return strncmp(target, prefix, strlen(prefix)) == 0;
 }
 
-char* comStrGetSubstring(const char *src, char *dst, size_t start, size_t end) {
-    return strncpy(dst, src + start, end);
+void comStrGetSubstring(const char *src, char *dst, size_t start, size_t end) {
+    strncpy(dst, src + start, end - start);
 }
 
-
-void strSplit(char* source, char** dest, const char delimiter[1], int *tokensCount) {
+char** strSplit(char* source, const char delimiter[1], const int maxTokens, const int maxLength, int *tokensCount) {
     *tokensCount = 0;
+    char** tokens = malloc(maxTokens * sizeof(char*));
     
-    while (true) {
-        char *token = strtok(source, delimiter);
-        if (token == NULL)
-            break;
+    char *token = strtok(source, delimiter);
+    if (token == NULL)
+        return tokens;
+
+    while (token != NULL && *tokensCount < maxTokens) {
         *tokensCount = *tokensCount + 1;
-        strcpy(dest[*tokensCount], token);
+        tokens[*tokensCount] = malloc(maxLength * sizeof(char));
+        strcpy(tokens[*tokensCount], token);
+        token = strtok(NULL, delimiter);
     }
+
+    return tokens;
 }
 
 /**
@@ -210,11 +214,11 @@ void testCommandAdd(void) {
 
     int testsCount = 1;
     CmdTest validTests[testsCount];
-    strcpy(validTests[0].inputTxt, "add sensor 01 in 01");
     
-    validTests[0].cmd.code = CMD_CODE_ADD;
+    strcpy(validTests[0].inputTxt, "add sensor 01 in 01");
     strcpy(validTests[0].cmd.equipment, "01");
-
+    validTests[0].cmd.code = CMD_CODE_ADD;
+    
     for (int i = 0; i < SENSOR_COUNT; i++)
         validTests[0].cmd.sensors[i] = false;
     validTests[0].cmd.sensors[0] = true;
@@ -222,10 +226,20 @@ void testCommandAdd(void) {
     for (int i = 0; i < testsCount; i++) {
         
         CmdTest test = validTests[i];
+        printf("\n Testing command: '%s'... \n", test.inputTxt);
+
         test.cmd.isValid = true;
         strcpy(test.cmd.name, CMD_NAME[i]);
-
+        
         Command cmd = getCommand(test.inputTxt);
+        // printf("\n cmd.isValid: %d", cmd.isValid);
+        // printf("\n cmd.code: %d", cmd.code);
+        // printf("\n cmd.equipment: '%s'", cmd.equipment);
+        // printf("\n cmd.name: '%s'", cmd.name);
+        // printf("\n cmd.sensors[0]: '%d'", cmd.sensors[0]);
+        // printf("\n cmd.sensors[1]: '%d'", cmd.sensors[1]);
+        // printf("\n cmd.sensors[2]: '%d'", cmd.sensors[2]);
+        // printf("\n cmd.sensors[3]: '%d'", cmd.sensors[3]);
 
         bool passed = (
             cmd.isValid
