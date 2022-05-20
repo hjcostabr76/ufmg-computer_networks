@@ -45,6 +45,7 @@ typedef struct {
 typedef struct {
     char inputTxt[100];
     Command cmd;
+    bool isVerbose;
 } CmdTest;
 
 /**
@@ -53,11 +54,16 @@ typedef struct {
  * ------------------------------------------------
  */
 
-bool comRegexMatch(const char* pattern, const char* str, char errorMsg[100]);
-bool comStrStartsWith(const char *target, const char *prefix);
-void comStrGetSubstring(const char *src, char *dst, size_t start, size_t end);
+bool regexMatch(const char* pattern, const char* str, char errorMsg[100]);
+bool strStartsWith(const char *target, const char *prefix);
+void strGetSubstring(const char *src, char *dst, size_t start, size_t end);
 char** strSplit(char* source, const char delimiter[1], const int maxTokens, const int maxLength, int *tokensCount);
-Command getCommand();
+Command getGenericCommand(void);
+Command getEmptyCommand(CmmdCodeEnum code);
+
+bool runBulkTest(const char* title, CmdTest tests[], const int nTests, const bool isValid);
+bool runOneTest(CmdTest test);
+void testCommandAdd(void);
 
 /**
  * ------------------------------------------------
@@ -74,7 +80,7 @@ Command getCommand(const char* input) {
     for (int i = 0; i < CMD_COUNT; i++) {
 
         char regexMsg[100];
-        cmd.isValid = comRegexMatch(CMD_PATTERN[i], input, regexMsg);
+        cmd.isValid = regexMatch(CMD_PATTERN[i], input, regexMsg);
         if (!cmd.isValid)
             continue;
 
@@ -84,40 +90,39 @@ Command getCommand(const char* input) {
         break;
 	}
 
-	if (!cmd.isValid || strcmp(cmd.name, CMD_NAME[CMD_CODE_KILL]) == 0)
+	if (!cmd.isValid || cmd.code == CMD_CODE_KILL)
         return cmd;
 
     // Determine equipment
-    int equipIdLength = 2;
-    int inputLength = strlen(input);
-    memset(cmd.equipment, '\0', sizeof(cmd.equipment));
-    comStrGetSubstring(input, cmd.equipment, inputLength - equipIdLength, inputLength);
 
-	if (strcmp(cmd.name, CMD_NAME[CMD_CODE_LIST]) == 0)
+    char inputCopy[100];
+    strcpy(inputCopy, input);
+
+    int inputArgsC;
+    char** inputArgs = strSplit(inputCopy, " ", 8, 8, &inputArgsC);
+    strcpy(cmd.equipment, inputArgs[inputArgsC - 1]);
+
+    if (cmd.code == CMD_CODE_LIST)
         return cmd;
 
-    // Determine Sensors
-    int sensorsChar1 = strlen(cmd.name) + 1;
-    int sensorsCharLast = inputLength - strlen(CMD_PATTERN_END);
-    char sensorsListStr[sensorsCharLast - sensorsChar1];
-    memset(sensorsListStr, '\0', strlen(sensorsListStr));
-    comStrGetSubstring(input, sensorsListStr, sensorsChar1, sensorsCharLast);
-
-    int inputSensorsCount;
-    char** sensorIds = strSplit(sensorsListStr, " ", SENSOR_COUNT, 3, &inputSensorsCount);
-    
+    // Determine sensors    
     for (int i = 0; i < SENSOR_COUNT; i++)
         cmd.sensors[i] = false;
 
-    for (int i = 0; i < inputSensorsCount; i++) {
-        int sensorCode = atoi(sensorIds[i]);
+    int firstSensorIdx = cmd.code == CMD_CODE_READ ? 1 : 2;
+    for (int i = firstSensorIdx; i < inputArgsC - 2; i++) {
+        int sensorCode = atoi(inputArgs[i]) - 1;
+        if (cmd.sensors[sensorCode]) {
+            cmd.isValid = false;
+            break;
+        }
         cmd.sensors[sensorCode] = true;
     }
     
     return cmd;
 }
 
-bool comRegexMatch(const char* pattern, const char* str, char errorMsg[100]) {
+bool regexMatch(const char* pattern, const char* str, char errorMsg[100]) {
 
     regex_t regex;
     memset(errorMsg, 0, 100);
@@ -144,15 +149,16 @@ bool comRegexMatch(const char* pattern, const char* str, char errorMsg[100]) {
     return isSuccess;
 }
 
-bool comStrStartsWith(const char *target, const char *prefix) {
+bool strStartsWith(const char *target, const char *prefix) {
    return strncmp(target, prefix, strlen(prefix)) == 0;
 }
 
-void comStrGetSubstring(const char *src, char *dst, size_t start, size_t end) {
+void strGetSubstring(const char *src, char *dst, size_t start, size_t end) {
     strncpy(dst, src + start, end - start);
 }
 
 char** strSplit(char* source, const char delimiter[1], const int maxTokens, const int maxLength, int *tokensCount) {
+    
     *tokensCount = 0;
     char** tokens = malloc(maxTokens * sizeof(char*));
     
@@ -161,9 +167,12 @@ char** strSplit(char* source, const char delimiter[1], const int maxTokens, cons
         return tokens;
 
     while (token != NULL && *tokensCount < maxTokens) {
-        *tokensCount = *tokensCount + 1;
+
         tokens[*tokensCount] = malloc(maxLength * sizeof(char));
+        memset(tokens[*tokensCount], '\n', maxLength * sizeof(char));
         strcpy(tokens[*tokensCount], token);
+        
+        *tokensCount = *tokensCount + 1;
         token = strtok(NULL, delimiter);
     }
 
@@ -176,74 +185,224 @@ char** strSplit(char* source, const char delimiter[1], const int maxTokens, cons
  * ------------------------------------------------
  */
 
-// void testPattern(const char* title, const char* pattern, const char testStrings[][100], const int strCount, const bool isTestValid) {
+Command getGenericCommand(void) {
+    Command command;
+    command.isValid = false;
+    memset(command.name, '\0', sizeof(command.name));
+    memset(command.equipment, '\0', sizeof(command.equipment));
+    for (int i = 0; i < SENSOR_COUNT; i++)
+        command.sensors[i] = false;
+    return command;
+}
 
-//     bool isSuccess = true;
-//     printf("\n----- New Test: %s [%s examples] ----------\n", title, isTestValid ? "valid" : "invalid");
+Command getEmptyCommand(CmmdCodeEnum code) {
+    Command command = getGenericCommand();
+    command.code = code;
+    strcpy(command.name, CMD_NAME[code]);
+    return command;
+}
 
-//     for (int i = 0; i < strCount; i++) {
-//         printf("\nTesting string \"%s\"...", testStrings[i]);
-
-//         char msg[100];
-//         bool isMatch = comRegexMatch(pattern, testStrings[i], msg);
-//         isSuccess = isSuccess && ((isTestValid && isMatch) || (!isTestValid && !isMatch));
-
-//         if (isMatch)
-//             printf("\n\tOK...");
-//         else if (!strlen(msg))
-//             printf("\n\tNot OK!");
-//         else
-//             printf("\n\tError! \"%s\" ", msg);
-//     }
-
-//     if (isSuccess)
-//         printf("\n-------------------- TEST PASSED --------------------\n");
-//     else
-//         printf("\n-------------------- TEST FAILED --------------------\n");
-// }
 
 void testCommandAdd(void) {
 
-    // Test valid examples
-    // const char cmdTestAddvValid[][100] = {
-    //     {"add sensor 01 in 01"},
-    //     {"add sensor 01 02 in 02"},
-    //     {"add sensor 01 02 03 in 03"},
-    //     {"add sensor 01 02 03 04 in 04"}
-    // };
-
-    int testsCount = 1;
+    int n = -1;
+    int testsCount = 4;
+    bool isVerbose = false;
     CmdTest validTests[testsCount];
-    
-    strcpy(validTests[0].inputTxt, "add sensor 01 in 01");
-    strcpy(validTests[0].cmd.equipment, "01");
-    validTests[0].cmd.code = CMD_CODE_ADD;
-    
-    for (int i = 0; i < SENSOR_COUNT; i++)
-        validTests[0].cmd.sensors[i] = false;
-    validTests[0].cmd.sensors[0] = true;
 
-    for (int i = 0; i < testsCount; i++) {
+    /**
+     * VALID Tests...
+     */
+
+    // New test...
+    n++;
+    validTests[n].isVerbose = isVerbose;
+    strcpy(validTests[n].inputTxt, "add sensor 01 in 01");
+
+    validTests[n].cmd = getEmptyCommand(CMD_CODE_ADD);
+    strcpy(validTests[n].cmd.equipment, "01");
+    validTests[n].cmd.sensors[0] = true;
+
+    // New test...
+    n++;
+    validTests[n].isVerbose = isVerbose;
+    strcpy(validTests[n].inputTxt, "add sensor 01 02 in 02");
+
+    validTests[n].cmd = getEmptyCommand(CMD_CODE_ADD);
+    strcpy(validTests[n].cmd.equipment, "02");
+    validTests[n].cmd.sensors[0] = true;
+    validTests[n].cmd.sensors[1] = true;
+
+    // New test...
+    n++;
+    validTests[n].isVerbose = isVerbose;
+    strcpy(validTests[n].inputTxt, "add sensor 01 02 03 in 03");
+
+    validTests[n].cmd = getEmptyCommand(CMD_CODE_ADD);
+    strcpy(validTests[n].cmd.equipment, "03");
+    validTests[n].cmd.sensors[0] = true;
+    validTests[n].cmd.sensors[1] = true;
+    validTests[n].cmd.sensors[2] = true;
+
+    // New test...
+    n++;
+    validTests[n].isVerbose = isVerbose;
+    strcpy(validTests[n].inputTxt, "add sensor 01 02 03 04 in 04");
+
+    validTests[n].cmd = getEmptyCommand(CMD_CODE_ADD);
+    strcpy(validTests[n].cmd.equipment, "04");
+    validTests[n].cmd.sensors[0] = true;
+    validTests[n].cmd.sensors[1] = true;
+    validTests[n].cmd.sensors[2] = true;
+    validTests[n].cmd.sensors[3] = true;
+
+    runBulkTest("ADD", validTests, testsCount, true);
+
+    /**
+     * INVALID Tests...
+     */
+
+    n = -1;
+    testsCount = 13;
+    isVerbose = true;
+    CmdTest invalidTests[testsCount];
+
+    // New test...
+    n++;
+    invalidTests[n].isVerbose = isVerbose;
+    strcpy(invalidTests[n].inputTxt, "add sensor 00 in 01");
+    invalidTests[n].cmd = getEmptyCommand(CMD_CODE_ADD);
+
+    // New test...
+    n++;
+    invalidTests[n].isVerbose = isVerbose;
+    strcpy(invalidTests[n].inputTxt, "add sensor 05 in 01");
+    invalidTests[n].cmd = getEmptyCommand(CMD_CODE_ADD);
+
+    // New test...
+    n++;
+    invalidTests[n].isVerbose = isVerbose;
+    strcpy(invalidTests[n].inputTxt, "add sensor 01 in 00");
+    invalidTests[n].cmd = getEmptyCommand(CMD_CODE_ADD);
+
+    // New test...
+    n++;
+    invalidTests[n].isVerbose = isVerbose;
+    strcpy(invalidTests[n].inputTxt, "add sensor 01 in 05");
+    invalidTests[n].cmd = getEmptyCommand(CMD_CODE_ADD);
+
+    // New test...
+    n++;
+    invalidTests[n].isVerbose = isVerbose;
+    strcpy(invalidTests[n].inputTxt, "add sensor 01 01 in 02");
+    invalidTests[n].cmd = getEmptyCommand(CMD_CODE_ADD);
+
+    // New test...
+    n++;
+    invalidTests[n].isVerbose = isVerbose;
+    strcpy(invalidTests[n].inputTxt, "add sensor 02 02 03 in 03");
+    invalidTests[n].cmd = getEmptyCommand(CMD_CODE_ADD);
+
+    // New test...
+    n++;
+    invalidTests[n].isVerbose = isVerbose;
+    strcpy(invalidTests[n].inputTxt, "add sensor 03 04 04 in 04");
+    invalidTests[n].cmd = getEmptyCommand(CMD_CODE_ADD);
+
+    // New test...
+    n++;
+    invalidTests[n].isVerbose = isVerbose;
+    strcpy(invalidTests[n].inputTxt, "add sensor 01 02 03 02 in 03");
+    invalidTests[n].cmd = getEmptyCommand(CMD_CODE_ADD);
+
+    // New test...
+    n++;
+    invalidTests[n].isVerbose = isVerbose;
+    strcpy(invalidTests[n].inputTxt, "add 01 in 01");
+    invalidTests[n].cmd = getEmptyCommand(CMD_CODE_ADD);
+
+    // New test...
+    n++;
+    invalidTests[n].isVerbose = isVerbose;
+    strcpy(invalidTests[n].inputTxt, "ad sensor 02 in 03");
+    invalidTests[n].cmd = getEmptyCommand(CMD_CODE_ADD);
+
+    // New test...
+    n++;
+    invalidTests[n].isVerbose = isVerbose;
+    strcpy(invalidTests[n].inputTxt, "add sesnor 03 in 04");
+    invalidTests[n].cmd = getEmptyCommand(CMD_CODE_ADD);
+
+    // New test...
+    n++;
+    invalidTests[n].isVerbose = isVerbose;
+    strcpy(invalidTests[n].inputTxt, "addsensor 04 in 02");
+    invalidTests[n].cmd = getEmptyCommand(CMD_CODE_ADD);
+
+    // New test...
+    n++;
+    invalidTests[n].isVerbose = isVerbose;
+    strcpy(invalidTests[n].inputTxt, "add sensor 01 02 03 04 in 03 01");
+    invalidTests[n].cmd = getEmptyCommand(CMD_CODE_ADD);
+
+    runBulkTest("ADD", invalidTests, testsCount, false);
+}
+
+bool runBulkTest(const char* title, CmdTest tests[], const int nTests, const bool isValid) {
+
+    int failureCount = 0;
+    printf("\n----- New Test: %s [%s examples] ----------\n", title, isValid ? "valid" : "invalid");
+
+    for (int i = 0; i < nTests; i++) {
         
-        CmdTest test = validTests[i];
-        printf("\n Testing command: '%s'... \n", test.inputTxt);
+        CmdTest test = tests[i];
+        test.cmd.isValid = isValid;
+        bool isSuccess = runOneTest(test);
+        if (!isSuccess)
+            failureCount++;
+    }
 
-        test.cmd.isValid = true;
-        strcpy(test.cmd.name, CMD_NAME[i]);
+    if (!failureCount)
+        printf("\n-------------------- ALL TESTS PASSED! --------------\n");
+    else
+        printf("\n-------------------- %d TESTS FAILED ---------------\n", failureCount);
+
+    return !failureCount;
+}
+
+bool runOneTest(CmdTest test) {
+
+    printf("\n\n Testing command: '%s'...", test.inputTxt);
+
+    Command cmd = getCommand(test.inputTxt);
+    
+    if (test.isVerbose) {
         
-        Command cmd = getCommand(test.inputTxt);
-        // printf("\n cmd.isValid: %d", cmd.isValid);
-        // printf("\n cmd.code: %d", cmd.code);
-        // printf("\n cmd.equipment: '%s'", cmd.equipment);
-        // printf("\n cmd.name: '%s'", cmd.name);
-        // printf("\n cmd.sensors[0]: '%d'", cmd.sensors[0]);
-        // printf("\n cmd.sensors[1]: '%d'", cmd.sensors[1]);
-        // printf("\n cmd.sensors[2]: '%d'", cmd.sensors[2]);
-        // printf("\n cmd.sensors[3]: '%d'", cmd.sensors[3]);
+        printf("\n\t-- What came: -------------------");
+        printf("\n\tcmd.isValid: %d", cmd.isValid);
+        printf("\n\tcmd.code: %d", cmd.code);
+        printf("\n\tcmd.equipment: '%s'", cmd.equipment);
+        printf("\n\tcmd.name: '%s'", cmd.name);
+        printf("\n\tcmd.sensors[0]: '%d'", cmd.sensors[0]);
+        printf("\n\tcmd.sensors[1]: '%d'", cmd.sensors[1]);
+        printf("\n\tcmd.sensors[2]: '%d'", cmd.sensors[2]);
+        printf("\n\tcmd.sensors[3]: '%d'", cmd.sensors[3]);
 
-        bool passed = (
-            cmd.isValid
-            && cmd.code == test.cmd.code
+        printf("\n\t-- What was supposed to come: ---");
+        printf("\n\ttest.cmd.isValid: %d", test.cmd.isValid);
+        printf("\n\ttest.cmd.code: %d", test.cmd.code);
+        printf("\n\ttest.cmd.equipment: '%s'", test.cmd.equipment);
+        printf("\n\ttest.cmd.name: '%s'", test.cmd.name);
+        printf("\n\ttest.cmd.sensors[0]: '%d'", test.cmd.sensors[0]);
+        printf("\n\ttest.cmd.sensors[1]: '%d'", test.cmd.sensors[1]);
+        printf("\n\ttest.cmd.sensors[2]: '%d'", test.cmd.sensors[2]);
+        printf("\n\ttest.cmd.sensors[3]: '%d'", test.cmd.sensors[3]);
+    }
+
+    bool isSuccess = cmd.isValid == test.cmd.isValid;
+    if (isSuccess && test.cmd.isValid) {
+        isSuccess = (
+            cmd.code == test.cmd.code
             && strcmp(cmd.equipment, test.cmd.equipment) == 0
             && strcmp(cmd.name, test.cmd.name) == 0
             && cmd.sensors[0] == test.cmd.sensors[0]
@@ -251,31 +410,14 @@ void testCommandAdd(void) {
             && cmd.sensors[2] == test.cmd.sensors[2]
             && cmd.sensors[3] == test.cmd.sensors[3]
         );
-
-        if (passed)
-            printf("\n-------------------- TEST PASSED --------------------\n");
-        else
-            printf("\n-------------------- TEST FAILED --------------------\n");
     }
 
-    // int strCount = sizeof(cmdTestAddvValid) / sizeof(cmdTestAddvValid[0]);
-    // testPattern("ADD", CMD_PATTERN[CMD_CODE_ADD], cmdTestAddvValid, strCount, true);
+    if (isSuccess)
+        printf("\n> OK!");
+    else
+        printf("\n> Not OK!");
 
-    // // Test invalid examples
-    // const char cmdTestAddvInvalid[][100] = {
-    //     {"add sensor 05 in 02"},
-    //     {"add sensor 01 in 05"},
-    //     {"add sensor 01 01 in 02"},
-    //     {"add sensor 01 02 03 04 04 in 02"},
-    //     {"add sensor 01 02 in 01 02"},
-    //     {"add sensor in 01"},
-    //     {"add sensor 01"},
-    //     {"add 01 in 01"},
-    //     {"sensor in 01"}
-    // };
-
-    // strCount = sizeof(cmdTestAddvInvalid) / sizeof(cmdTestAddvInvalid[0]);
-    // testPattern("ADD", CMD_PATTERN[CMD_CODE_ADD], cmdTestAddvInvalid, strCount, false);
+    return isSuccess;
 }
 
 int main() {
