@@ -20,12 +20,12 @@
 bool servValidateInput(int argc, char **argv);
 void servExplainAndDie(char **argv);
 
-void servReceiveMsg(const int servSocket, int* cliSocket, char buffer[BUF_SIZE]);
-void servAddSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
-void servListSensors(Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
-void servReadSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
-void servRemoveSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
-void servExecuteCommand(Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
+void servReceiveMsg(const int servSocket, int cliSocket, char buffer[BUF_SIZE]);
+void servAddSensor(const Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
+void servListSensors(const Command cmd, const Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
+void servReadSensor(const Command cmd, const Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
+void servRemoveSensor(const Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
+void servExecuteCommand(const Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
 
 int servGetSensorsCount(const Equipment equipments[EQUIP_COUNT]);
 
@@ -68,13 +68,15 @@ int main(int argc, char **argv) {
     for (int i = 0; i < EQUIP_COUNT; i++)
         equipments[i] = getEmptyEquipment(i);
 
-    int cliSocket = -1;
+    // Accept client
+    int cliSocket = netAccept(servSocket);
+
     while (true) {
         
         // Receive message
         char input[BUF_SIZE];
         memset(input, 0, BUF_SIZE);
-        servReceiveMsg(servSocket, &cliSocket, input);
+        servReceiveMsg(servSocket, cliSocket, input);
 
         // Parse command
         const Command cmd = getCommand(input);
@@ -100,6 +102,7 @@ int main(int argc, char **argv) {
         const bool isSuccess = netSend(cliSocket, answer);
         if (!isSuccess)
             comLogErrorAndDie("Sending command failure");
+        comDebugStep("Response sent!\n");
 
         // End connection
         if (cmd.code == CMD_CODE_KILL)
@@ -150,17 +153,18 @@ void servExplainAndDie(char **argv) {
     exit(EXIT_FAILURE);
 }
 
-void servReceiveMsg(const int servSocket, int* cliSocket, char buffer[BUF_SIZE]) {
+void servReceiveMsg(const int servSocket, const int cliSocket, char buffer[BUF_SIZE]) {
+    
+    comDebugStep("Waiting for command...\n");
     memset(buffer, 0, BUF_SIZE);
     
-    *cliSocket = netAccept(servSocket);
-    size_t receivedBytes = netRecv(*cliSocket, buffer, TIMEOUT_TRANSFER_SECS);
+    size_t receivedBytes = netRecv(cliSocket, buffer, TIMEOUT_TRANSFER_SECS);
     if (receivedBytes == -1)
         comLogErrorAndDie("Failure as trying to receive messages from client");
 
     if (DEBUG_ENABLE) {
         char aux[BUF_SIZE];
-        sprintf(aux, "Input detected: '%s'", buffer);
+        sprintf(aux, "Received buffer: '%s'", buffer);
         comDebugStep(aux);
     }
 }
@@ -172,6 +176,7 @@ void servExecuteCommand(Command cmd, Equipment allEquipments[EQUIP_COUNT], char 
             break;
         case CMD_CODE_LIST:
             servListSensors(cmd, allEquipments, answer);
+            break;
         case CMD_CODE_READ:
             servReadSensor(cmd, allEquipments, answer);
             break;
@@ -185,73 +190,133 @@ void servExecuteCommand(Command cmd, Equipment allEquipments[EQUIP_COUNT], char 
     }
 }
 
-void servAddSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char* answer) {
+void servAddSensor(const Command cmd, Equipment allEquipments[EQUIP_COUNT], char* answer) {
 
     // Prepare answer string
     int tempLength = 100;
     char tempMsg[tempLength];
     memset(tempMsg, 0, tempLength);
     
-    char sensorId[10];
-    memset(sensorId, 0, 10);
-    memset(answer, 0, BUF_SIZE);
-    strcpy(answer, "sensor ");
+    // Parse command
+    Equipment* equip = &allEquipments[cmd.equipCode];
 
-    Equipment equip = allEquipments[cmd.equipCode];
+    bool hasAdded = false;
+    bool addedList[SENSOR_COUNT] = { false };
+
+    bool hasRepeated = false;
+    bool repeatedList[SENSOR_COUNT] = { false };
+
     for (int i = 0; i < SENSOR_COUNT; i++) {
         
         if (!cmd.sensors[i])
             continue;
 
-        // Verify limit exceeding
-        if (servGetSensorsCount(allEquipments) >= MAX_SENSORS) {
-            memset(tempMsg, 0, tempLength);
-            strcpy(answer, "limit exceeded");
-            return;
+        // Compute this adding try
+        if (equip->sensors[i]) {
+            hasRepeated = true;
+            repeatedList[i] = true;
+
+        } else {
+            hasAdded = true;
+            addedList[i] = true;
+        }
+    }
+
+    // Build answer message
+    memset(answer, 0, BUF_SIZE);
+    strcpy(answer, "sensor ");
+
+    if (hasAdded) {
+        for (int i = 0; i < SENSOR_COUNT; i++) {
+
+            // Verify limit exceeding
+            if (servGetSensorsCount(allEquipments) >= MAX_SENSORS) {
+                memset(answer, 0, BUF_SIZE);
+                strcpy(answer, "limit exceeded");
+                return;
+            }
+
+            // Compute new sensor added
+            if (addedList[i]) {
+                equip->sensors[i] = true;
+                memset(tempMsg, 0, tempLength);
+                sprintf(tempMsg, "%s ", SENSOR_IDS[i]);
+                strcat(answer, tempMsg);
+            }
         }
 
-        // Try to add
-        strcpy(sensorId, SENSOR_IDS[i]);
-        if (!equip.sensors[i]) {
-            equip.sensors[i] = true;
-            sprintf(tempMsg, "%s added ", sensorId);
-        } else
-            sprintf(tempMsg, "%s already exists ", sensorId);
+        strcat(answer, "added ");
+    }
 
+    if (hasRepeated) {
+        for (int i = 0; i < SENSOR_COUNT; i++) {
+
+            // Compute repeated sensor
+            if (repeatedList[i]) {
+                memset(tempMsg, 0, tempLength);
+                sprintf(tempMsg, "%s ", SENSOR_IDS[i]);
+                strcat(answer, tempMsg);
+            }
+        }
+
+        memset(tempMsg, 0, tempLength);
+        sprintf(tempMsg, "already exists in %s", EQUIP_IDS[equip->code]);
         strcat(answer, tempMsg);
     }
 }
 
-void servRemoveSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char* answer) {
+void servRemoveSensor(const Command cmd, Equipment allEquipments[EQUIP_COUNT], char* answer) {
     
-    // Prepare answer string
-    int tempLength = 100;
-    char tempMsg[tempLength];
-    memset(tempMsg, 0, tempLength);
-    
-    memset(answer, 0, BUF_SIZE);
-    char sensorId[2];
-    strcpy(answer, "sensor ");
+    bool hasRemoved = false;
+    bool removedList[SENSOR_COUNT] = { false };
 
-    // Remove em'all
-    Equipment equip = allEquipments[cmd.equipCode];
+    bool hasMissed = false;
+    bool missedList[SENSOR_COUNT] = { false };
+
+    // Parse command
+    Equipment* equip = &allEquipments[cmd.equipCode];
     for (int i = 0; i < SENSOR_COUNT; i++) {
         
         if (!cmd.sensors[i])
             continue;
 
-        strcpy(sensorId, SENSOR_IDS[i]);
-        if (equip.sensors[i]) {
-            equip.sensors[i] = false;
-            sprintf(tempMsg, "%s removed ", sensorId);
-        } else
-            sprintf(tempMsg, "%s does not exist in %s ", sensorId, EQUIP_IDS[equip.code]);
+        if (equip->sensors[i]) {
+            hasRemoved = true;
+            removedList[i] = true;
+        } else {
+            hasMissed = true;
+            missedList[i] = true;
+        }
+    }
 
-        strcat(answer, tempMsg);
+    // Build answer
+    memset(answer, 0, BUF_SIZE);
+    strcpy(answer, "sensor ");
+
+    if (hasRemoved) {
+        for (int i = 0; i < SENSOR_COUNT; i++) {
+            if (removedList[i]) {
+                equip->sensors[i] = false;
+                strcat(answer, SENSOR_IDS[i]);
+                strcat(answer, " ");
+            }
+        }
+        strcat(answer, "removed ");
+    }
+
+    if (hasMissed) {
+        for (int i = 0; i < SENSOR_COUNT; i++) {
+            if (missedList[i]) {
+                strcat(answer, SENSOR_IDS[i]);
+                strcat(answer, " ");
+            }
+        }
+        strcat(answer, "does not exist in ");
+        strcat(answer, EQUIP_IDS[equip->code]);
     }
 }
 
-void servReadSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char* answer) {
+void servReadSensor(const Command cmd, const Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]) {
 
     // Seed for random values
     srand(time(NULL));
@@ -305,19 +370,22 @@ void servReadSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char* ans
         strcat(answer, "not installed");
 }
 
-void servListSensors(Command cmd, Equipment allEquipments[EQUIP_COUNT], char* answer) {
-    
-    int tempLength = 100;
-    char tempMsg[tempLength];
+void servListSensors(const Command cmd, const Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]) {
 
     Equipment equip = allEquipments[cmd.equipCode];
+    memset(answer, 0, BUF_SIZE);
+    bool isThereAny = false;
+    
     for (int i = 0; i < SENSOR_COUNT; i++) {
         if (equip.sensors[i]) {
-            memset(tempMsg, 0, tempLength);
-            sprintf(tempMsg, "%s ", SENSOR_IDS[i]);
-            strcat(answer, tempMsg);
+            isThereAny = true;
+            strcat(answer, SENSOR_IDS[i]);
+            strcat(answer, " ");
         }
     }
+
+    if (!isThereAny)
+        strcpy(answer, "none");
 }
 
 int servGetSensorsCount(const Equipment equipments[EQUIP_COUNT]) {
