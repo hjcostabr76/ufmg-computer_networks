@@ -36,7 +36,7 @@ int main(int argc, char **argv) {
     // Create socket
     comDebugStep("Creating server socket...\n");
     const int port = atoi(argv[2]);
-    int socket = netListen(port, TIMEOUT_CONN_SECS, MAX_CONNECTIONS);
+    int servSocket = netListen(port, TIMEOUT_CONN_SECS, MAX_CONNECTIONS);
 
     const int dbgTxtLength = 500;
     char dbgTxt[dbgTxtLength];
@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
 
         char boundAddr[200];
         memset(dbgTxt, 0, dbgTxtLength);
-        if (!netSetSocketAddressString(socket, boundAddr)) {
+        if (!netSetSocketAddressString(servSocket, boundAddr)) {
             sprintf(dbgTxt, "\nFailure as trying to exhibit bound address...\n");
             comLogErrorAndDie(dbgTxt);
         }
@@ -58,14 +58,16 @@ int main(int argc, char **argv) {
         
         char input[BUF_SIZE];
         memset(input, 0, BUF_SIZE);
-        size_t receivedBytes = netRecv(socket, input, TIMEOUT_TRANSFER_SECS);
+        const int cliSocket = netAccept(servSocket);
+        size_t receivedBytes = netRecv(cliSocket, input, TIMEOUT_TRANSFER_SECS);
         if (receivedBytes == -1)
             comLogErrorAndDie("Failure as trying to receive messages from client");
 
         // Validate messages
         // Determine command
+        input[BUF_SIZE - 1] = '\n';
         const Command cmd = getCommand(input);
-        printf("\n Command cmd.code = '%d'", cmd.code);
+        printf("\n Command receivedBytes: %d | cmd.code / name = '%d' / '%s'", receivedBytes, cmd.code, cmd.name);
         break;
     }
     
@@ -82,7 +84,7 @@ int main(int argc, char **argv) {
 
     // Finish...
 	comDebugStep("\nClosing connection...\n");
-    close(socket);
+    close(servSocket);
     exit(EXIT_SUCCESS);
 }
 

@@ -259,7 +259,22 @@ bool netSend(const int socket, const char *buffer, const unsigned bytesToSend) {
 	return acc >= bytesToSend;
 }
 
-ssize_t netRecv(const int socket, char *buffer, const int timeoutSecs) {
+int netAccept(const int servSocket) {
+
+	struct sockaddr_storage clientAddr;
+	socklen_t clientAddrLen = sizeof(clientAddr);
+
+	int clientSocket = accept(servSocket, (struct sockaddr *)(&clientAddr), &clientAddrLen);
+	if (clientSocket == -1) {
+		if (errno != EAGAIN && errno != EWOULDBLOCK)
+			comLogErrorAndDie("Failure as trying to accept client connection");
+		comDebugStep("\nDisconnecting server because of innactivity...\n\n");
+	}
+
+	return clientSocket;
+}
+
+ssize_t netRecv(const int cliSocket, char *buffer, const int timeoutSecs) {
 
 	struct timeval timeout;
     timeout.tv_sec = timeoutSecs;
@@ -268,16 +283,16 @@ ssize_t netRecv(const int socket, char *buffer, const int timeoutSecs) {
 	size_t acc = 0;
 	while (true) {
 		
-		ssize_t answer = 0;
-		const bool isThereAnyData = !netIsActionAvailable(socket, FD_ACTION_RD, &timeout);
+		const bool isThereAnyData = netIsActionAvailable(cliSocket, FD_ACTION_RD, &timeout);
         if (!isThereAnyData)
             break;
 
-		answer = recv(socket, buffer + acc, BUF_SIZE - acc, MSG_DONTWAIT);
-		if (answer == 0) // Transmission is over
+		ssize_t receivedBytes = 0;
+		receivedBytes = recv(cliSocket, buffer + acc, BUF_SIZE - acc, MSG_DONTWAIT);
+		if (receivedBytes == 0) // Transmission is over
 			break;
 
-		if (answer == -1) // Something wrong is not right
+		if (receivedBytes == -1) // Something wrong is not right
 			return (errno == EAGAIN || errno == EWOULDBLOCK) ? acc : -1;
 	}
 
@@ -289,39 +304,36 @@ bool netIsActionAvailable(int socket, const FdActionEnum action, struct timeval 
 	if (!socket || !action)
 		comLogErrorAndDie("Invalid arguments for action availability check");
 
-	while (true) {
+	fd_set readFds;
+	FD_ZERO(&readFds);
 
-		fd_set readFds;
-		FD_ZERO(&readFds);
+	fd_set writeFds;
+	FD_ZERO(&writeFds);
 
-		fd_set writeFds;
-		FD_ZERO(&writeFds);
+	if (action == FD_ACTION_RD)
+		FD_SET(socket, &readFds);
+	else if (action == FD_ACTION_WT)
+		FD_SET(socket, &writeFds);
+	else
+		comLogErrorAndDie("Invalid action type for availability check");
 
-		if (action == FD_ACTION_RD)
-			FD_SET(socket, &readFds);
-		else if (action == FD_ACTION_WT)
-			FD_SET(socket, &writeFds);
-		else
-			comLogErrorAndDie("Invalid action type for availability check");
-
-		int result = select(socket + 1, &readFds, &writeFds, NULL, timeout);
-		if (result == 0) // Timeout
-			return false;
-		
-		if (result == -1) {
-			if (errno != EINTR) // Erro: Interrupted System Call | TODO: Pq esse erro eh ignorado?
-				comLogErrorAndDie("Failure as running availability check");
-			continue;
-		}
-		
-		if (result != 1
-			|| (action == FD_ACTION_RD && FD_ISSET(socket, &readFds) == 0)
-			|| (action == FD_ACTION_WT && FD_ISSET(socket, &writeFds) == 0)
-		)
-			comLogErrorAndDie("Availability check: Something wrong isn't right... D:");
-		
-		return true;
+	int result = select(socket + 1, &readFds, &writeFds, NULL, timeout);
+	if (result == 0) // Timeout
+		return false;
+	
+	if (result == -1) {
+		if (errno != EINTR) // Erro: Interrupted System Call | TODO: Why is this error ignored?
+			comLogErrorAndDie("Failure as running availability check");
+		return false;
 	}
+
+	if (result != 1
+		|| (action == FD_ACTION_RD && FD_ISSET(socket, &readFds) == 0)
+		|| (action == FD_ACTION_WT && FD_ISSET(socket, &writeFds) == 0)
+	)
+		comLogErrorAndDie("Availability check: Something wrong isn't right... D:");
+	
+	return true;
 }
 
 bool netSetSocketAddressString(int socket, char *addrStr) {

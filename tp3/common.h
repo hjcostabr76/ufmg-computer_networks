@@ -75,10 +75,11 @@ Command getCommand(const char* input);
 
 /** -- NETWORK ---------- */
 
-int netConnect(const int port, const char *addrStr, const int timeoutSecs);
 int netListen(const int port, const int timeoutSecs, const int maxConnections);
+int netConnect(const int port, const char *addrStr, const int timeoutSecs);
 bool netSend(const int socket, const char *buffer, const unsigned bytesToSend);
-ssize_t netRecv(const int socket, char *buffer, const int timeoutSecs);
+int netAccept(const int servSocket);
+ssize_t netRecv(const int cliSocket, char *buffer, const int timeoutSecs);
 int netGetIpType(const char *ipTypeStr);
 bool netSetSocketAddressString(int socket, char *boundAddr);
 
