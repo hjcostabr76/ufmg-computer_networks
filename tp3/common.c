@@ -15,7 +15,8 @@
  * ------------------------------------------------
  */
 
-const char EQP_IDS[4][2] = { {"01"}, {"02"}, {"03"}, {"04"} };
+const char SENSOR_IDS[4][2] = { {"01"}, {"02"}, {"03"}, {"04"} };
+const char EQUIP_IDS[4][2] = { {"01"}, {"02"}, {"03"}, {"04"} };
 
 /**
  * TODO: 2022-05-20 - Do we really need this?
@@ -62,11 +63,29 @@ void comDebugStep(const char *text) {
  * ------------------------------------------------
  */
 
+int getEquipmentCodeById(const char* id) {
+	for (int i = 0; i < EQUIP_COUNT; i++) {
+		if (strcmp(EQUIP_IDS[i], id) == 0)
+			return i;
+	}
+	return -1;
+}
+
+Equipment getEmptyEquipment(const char* id) {
+    Equipment equip;
+    strcpy(equip.id, id);
+    equip.sensors[0] = false;
+    equip.sensors[1] = false;
+    equip.sensors[2] = false;
+    equip.sensors[3] = false;
+    return equip;
+}
+
 Command getGenericCommand(void) {
     Command command;
     command.isValid = false;
+    command.equipCode = getEquipmentCodeById("");
     memset(command.name, '\0', sizeof(command.name));
-    memset(command.equipment, '\0', sizeof(command.equipment));
     for (int i = 0; i < SENSOR_COUNT; i++)
         command.sensors[i] = false;
     return command;
@@ -106,7 +125,7 @@ Command getCommand(const char* input) {
 
     int inputArgsC;
     char** inputArgs = strSplit(inputCopy, " ", 8, 100, &inputArgsC);
-    strcpy(cmd.equipment, inputArgs[inputArgsC - 1]);
+    cmd.equipCode = getEquipmentCodeById(inputArgs[inputArgsC - 1]);
 
     if (cmd.code == CMD_CODE_LIST)
         return cmd;
@@ -283,6 +302,7 @@ ssize_t netRecv(const int cliSocket, char *buffer, const int timeoutSecs) {
 	size_t acc = 0;
 	while (true) {
 		
+		printf("\nwaiting... | acc: %d", acc);
 		const bool isThereAnyData = netIsActionAvailable(cliSocket, FD_ACTION_RD, &timeout);
         if (!isThereAnyData)
             break;
@@ -296,6 +316,7 @@ ssize_t netRecv(const int cliSocket, char *buffer, const int timeoutSecs) {
 			return (errno == EAGAIN || errno == EWOULDBLOCK) ? acc : -1;
 	}
 
+	printf("\ndone... | acc: %d", acc);
 	return acc;
 }
 

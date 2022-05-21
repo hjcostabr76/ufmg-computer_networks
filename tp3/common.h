@@ -19,7 +19,9 @@
 #define TIMEOUT_TRANSFER_SECS 15
 
 #define CMD_COUNT 5
+#define EQUIP_COUNT 4
 #define SENSOR_COUNT 4
+#define MAX_SENSORS 15
 
 /**
  * TODO: 2022-05-20 - Check if we need it all
@@ -30,7 +32,9 @@
 #define ASCII_LC_LETTER_LAST 122
 #define ASCII_LC_LETTER_FIRST 97
 
-extern const char EQP_IDS[4][2];
+extern const char EQUIP_IDS[4][2];
+extern const char SENSOR_IDS[4][2];
+
 extern const char CMD_NAME[5][15];
 extern const char CMD_PATTERN[CMD_COUNT][45];
 
@@ -46,7 +50,7 @@ typedef struct {
     bool isValid;
     CmdCodeEnum code;
     char name[15]; // TODO: Is it really necessary?
-    char equipment[3];
+    int equipCode;
     bool sensors[SENSOR_COUNT];
 } Command;
 
@@ -69,6 +73,7 @@ void comLogErrorAndDie(const char *msg);
 
 /** -- MAIN ------------- */
 
+Equipment getEmptyEquipment(const char* id);
 Command getGenericCommand(void);
 Command getEmptyCommand(CmdCodeEnum code);
 Command getCommand(const char* input);
