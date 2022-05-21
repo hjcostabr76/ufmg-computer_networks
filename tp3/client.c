@@ -106,7 +106,7 @@ void cliExplainAndDie(char **argv) {
 void cliSendCommand(const int socket, const char* input, char *answer) {
 
 	// Send command
-	comDebugStep("Sending command...\n");
+	comDebugStep("Sending command...");
 	const bool isSuccess = netSend(socket, input);
 	if (!isSuccess)
 		comLogErrorAndDie("Sending command failure");

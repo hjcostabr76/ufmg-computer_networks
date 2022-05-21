@@ -11,7 +11,7 @@
  * ------------------------------------------------
  */
 
-#define DEBUG_ENABLE 1
+#define DEBUG_ENABLE true
 #define BUF_SIZE 500
 
 #define MAX_CONNECTIONS 1
@@ -32,11 +32,11 @@
 #define ASCII_LC_LETTER_LAST 122
 #define ASCII_LC_LETTER_FIRST 97
 
-extern const char EQUIP_IDS[4][2];
-extern const char SENSOR_IDS[4][2];
+extern const char* EQUIP_IDS[4];
+extern const char* SENSOR_IDS[4];
 
-extern const char CMD_NAME[5][15];
-extern const char CMD_PATTERN[CMD_COUNT][45];
+extern const char* CMD_NAME[5];
+extern const char* CMD_PATTERN[CMD_COUNT];
 
 typedef enum { CMD_CODE_ADD, CMD_CODE_RM, CMD_CODE_LIST, CMD_CODE_READ, CMD_CODE_KILL } CmdCodeEnum;
 typedef enum { EQUIP_01, EQUIP_02, EQUIP_03, EQUIP_04 } EquipCodeEnum;

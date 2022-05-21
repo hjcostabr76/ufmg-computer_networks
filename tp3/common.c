@@ -15,21 +15,20 @@
  * ------------------------------------------------
  */
 
-const char NET_END_SEQ[6] = "#_#";
-
-const char SENSOR_IDS[4][2] = { {"01"}, {"02"}, {"03"}, {"04"} };
-const char EQUIP_IDS[4][2] = { {"01"}, {"02"}, {"03"}, {"04"} };
+const char* NET_END_SEQ = "#_#";
+const char* SENSOR_IDS[4] = { "01", "02", "03", "04" };
+const char* EQUIP_IDS[4] = { "01", "02", "03", "04" };
 
 /**
  * TODO: 2022-05-20 - Do we really need this?
  */
-const char CMD_NAME[CMD_COUNT][15] = { {"add sensor"}, {"remove sensor"}, {"list sensors"}, {"read"}, {"kill"} };
-const char CMD_PATTERN[CMD_COUNT][45] = {
-    {"^add sensor (0[1234] ){1,4}in 0[1234]$"},
-    {"^remove sensor (0[1234] ){1,4}in 0[1234]$"},
-    {"^list sensors in 0[1234]$"},
-    {"^read (0[1234] ){1,4}in 0[1234]$"},
-    {"^kill$"}
+const char* CMD_NAME[CMD_COUNT] = { "add sensor", "remove sensor", "list sensors", "read", "kill" };
+const char* CMD_PATTERN[CMD_COUNT] = {
+    "^add sensor (0[1234] ){1,4}in 0[1234]$",
+    "^remove sensor (0[1234] ){1,4}in 0[1234]$",
+    "^list sensors in 0[1234]$",
+    "^read (0[1234] ){1,4}in 0[1234]$",
+    "^kill$"
 };
 
 typedef enum { SOCK_ACTION_RD = 10, SOCK_ACTION_WT } SocketActionEnum;
@@ -274,7 +273,22 @@ bool netSend(const int socket, const char *msg) {
 	const ssize_t bytesToSend = strlen(buffer);
 
 	while (true) {
-		
+
+		// Check if is there any trouble before sending anything
+		int sockError = 0;
+		socklen_t sockErrLength = sizeof(sockError);
+		int errResult = getsockopt(socket, SOL_SOCKET, SO_ERROR, &sockError, &sockErrLength);
+		if (errResult != 0)
+			comLogErrorAndDie("Failure as trying to get socket error information [send]");
+
+		if (sockError != 0) {
+			char aux[100];
+			sprintf(aux, "Socket error detected (send): %d", sockError);
+			comDebugStep(aux);
+			return false;
+		}
+
+		// Try to send stuff
 		ssize_t sentBytes = send(socket, buffer + acc, bytesToSend - acc, 0/* MSG_DONTWAIT */);
 		if (sentBytes == -1)
 			return false;

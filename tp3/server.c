@@ -158,7 +158,6 @@ void servReceiveMsg(const int servSocket, int* cliSocket, char buffer[BUF_SIZE])
     if (receivedBytes == -1)
         comLogErrorAndDie("Failure as trying to receive messages from client");
 
-    printf("servReceiveMsg 4: \n");
     if (DEBUG_ENABLE) {
         char aux[BUF_SIZE];
         sprintf(aux, "Input detected: '%s'", buffer);
@@ -166,15 +165,35 @@ void servReceiveMsg(const int servSocket, int* cliSocket, char buffer[BUF_SIZE])
     }
 }
 
+void servExecuteCommand(Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]) {
+    switch (cmd.code) {
+        case CMD_CODE_ADD:
+            servAddSensor(cmd, allEquipments, answer);
+            break;
+        case CMD_CODE_LIST:
+            servListSensors(cmd, allEquipments, answer);
+        case CMD_CODE_READ:
+            servReadSensor(cmd, allEquipments, answer);
+            break;
+        case CMD_CODE_RM:
+            servRemoveSensor(cmd, allEquipments, answer);
+            break;
+        case CMD_CODE_KILL:
+        default:
+            strcpy(answer, CMD_NAME[CMD_CODE_KILL]);
+            break;
+    }
+}
+
 void servAddSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char* answer) {
-    
+
     // Prepare answer string
     int tempLength = 100;
     char tempMsg[tempLength];
     memset(tempMsg, 0, tempLength);
     
-    char sensorId[2];
-    memset(sensorId, 0, 2);
+    char sensorId[10];
+    memset(sensorId, 0, 10);
     memset(answer, 0, BUF_SIZE);
     strcpy(answer, "sensor ");
 
@@ -301,30 +320,10 @@ void servListSensors(Command cmd, Equipment allEquipments[EQUIP_COUNT], char* an
     }
 }
 
-void servExecuteCommand(Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]) {
-    switch (cmd.code) {
-        case CMD_CODE_ADD:
-            servAddSensor(cmd, allEquipments, answer);
-            break;
-        case CMD_CODE_LIST:
-            servListSensors(cmd, allEquipments, answer);
-        case CMD_CODE_READ:
-            servReadSensor(cmd, allEquipments, answer);
-            break;
-        case CMD_CODE_RM:
-            servRemoveSensor(cmd, allEquipments, answer);
-            break;
-        case CMD_CODE_KILL:
-        default:
-            strcpy(answer, CMD_NAME[CMD_CODE_KILL]);
-            break;
-    }
-}
-
-int servGetSensorsCount(const Equipment equipments[]) {
+int servGetSensorsCount(const Equipment equipments[EQUIP_COUNT]) {
     int count = 0;
     for (int i = 0; i < EQUIP_COUNT; i++) {
-        for (int j = 0; i < SENSOR_COUNT; j++) {
+        for (int j = 0; j < SENSOR_COUNT; j++) {
             if (equipments[i].sensors[j])
                 count++;
         }   
