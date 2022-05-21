@@ -28,8 +28,7 @@ bool runOneTest(CmdTest test) {
     if (isSuccess && test.cmd.isValid) {
         isSuccess = (
             cmd.code == test.cmd.code
-            && strcmp(cmd.equipment, test.cmd.equipment) == 0
-            && strcmp(cmd.name, test.cmd.name) == 0
+            && cmd.equipCode == test.cmd.equipCode
             && cmd.sensors[0] == test.cmd.sensors[0]
             && cmd.sensors[1] == test.cmd.sensors[1]
             && cmd.sensors[2] == test.cmd.sensors[2]
@@ -42,8 +41,7 @@ bool runOneTest(CmdTest test) {
         printf("\n\t-- What came: -------------------");
         printf("\n\tcmd.isValid: %d", cmd.isValid);
         printf("\n\tcmd.code: %d", cmd.code);
-        printf("\n\tcmd.equipment: '%s'", cmd.equipment);
-        printf("\n\tcmd.name: '%s'", cmd.name);
+        printf("\n\tcmd.equipment: '%d'", cmd.equipCode);
         printf("\n\tcmd.sensors[0]: '%d'", cmd.sensors[0]);
         printf("\n\tcmd.sensors[1]: '%d'", cmd.sensors[1]);
         printf("\n\tcmd.sensors[2]: '%d'", cmd.sensors[2]);
@@ -52,8 +50,7 @@ bool runOneTest(CmdTest test) {
         printf("\n\t-- What was supposed to come: ---");
         printf("\n\ttest.cmd.isValid: %d", test.cmd.isValid);
         printf("\n\ttest.cmd.code: %d", test.cmd.code);
-        printf("\n\ttest.cmd.equipment: '%s'", test.cmd.equipment);
-        printf("\n\ttest.cmd.name: '%s'", test.cmd.name);
+        printf("\n\ttest.cmd.equipment: '%d'", test.cmd.equipCode);
         printf("\n\ttest.cmd.sensors[0]: '%d'", test.cmd.sensors[0]);
         printf("\n\ttest.cmd.sensors[1]: '%d'", test.cmd.sensors[1]);
         printf("\n\ttest.cmd.sensors[2]: '%d'", test.cmd.sensors[2]);
@@ -111,7 +108,7 @@ void testCommandAdd() {
     strcpy(validTests[n].inputTxt, "add sensor 01 in 01");
 
     validTests[n].cmd = getEmptyCommand(CMD_CODE_ADD);
-    strcpy(validTests[n].cmd.equipment, "01");
+    validTests[n].cmd.equipCode = 0;
     validTests[n].cmd.sensors[0] = true;
 
     // New test...
@@ -120,7 +117,7 @@ void testCommandAdd() {
     strcpy(validTests[n].inputTxt, "add sensor 01 02 in 02");
 
     validTests[n].cmd = getEmptyCommand(CMD_CODE_ADD);
-    strcpy(validTests[n].cmd.equipment, "02");
+    validTests[n].cmd.equipCode = 1;
     validTests[n].cmd.sensors[0] = true;
     validTests[n].cmd.sensors[1] = true;
 
@@ -130,7 +127,7 @@ void testCommandAdd() {
     strcpy(validTests[n].inputTxt, "add sensor 01 02 03 in 03");
 
     validTests[n].cmd = getEmptyCommand(CMD_CODE_ADD);
-    strcpy(validTests[n].cmd.equipment, "03");
+    validTests[n].cmd.equipCode = 2;
     validTests[n].cmd.sensors[0] = true;
     validTests[n].cmd.sensors[1] = true;
     validTests[n].cmd.sensors[2] = true;
@@ -141,7 +138,7 @@ void testCommandAdd() {
     strcpy(validTests[n].inputTxt, "add sensor 01 02 03 04 in 04");
 
     validTests[n].cmd = getEmptyCommand(CMD_CODE_ADD);
-    strcpy(validTests[n].cmd.equipment, "04");
+    validTests[n].cmd.equipCode = 3;
     validTests[n].cmd.sensors[0] = true;
     validTests[n].cmd.sensors[1] = true;
     validTests[n].cmd.sensors[2] = true;
@@ -252,7 +249,7 @@ void testCommandRemove() {
     strcpy(validTests[n].inputTxt, "remove sensor 01 in 01");
 
     validTests[n].cmd = getEmptyCommand(CMD_CODE_RM);
-    strcpy(validTests[n].cmd.equipment, "01");
+    validTests[n].cmd.equipCode = 0;
     validTests[n].cmd.sensors[0] = true;
 
     // New test...
@@ -261,7 +258,7 @@ void testCommandRemove() {
     strcpy(validTests[n].inputTxt, "remove sensor 01 02 in 02");
 
     validTests[n].cmd = getEmptyCommand(CMD_CODE_RM);
-    strcpy(validTests[n].cmd.equipment, "02");
+    validTests[n].cmd.equipCode = 1;
     validTests[n].cmd.sensors[0] = true;
     validTests[n].cmd.sensors[1] = true;
 
@@ -271,7 +268,7 @@ void testCommandRemove() {
     strcpy(validTests[n].inputTxt, "remove sensor 01 02 03 in 03");
 
     validTests[n].cmd = getEmptyCommand(CMD_CODE_RM);
-    strcpy(validTests[n].cmd.equipment, "03");
+    validTests[n].cmd.equipCode = 2;
     validTests[n].cmd.sensors[0] = true;
     validTests[n].cmd.sensors[1] = true;
     validTests[n].cmd.sensors[2] = true;
@@ -282,7 +279,7 @@ void testCommandRemove() {
     strcpy(validTests[n].inputTxt, "remove sensor 01 02 03 04 in 04");
 
     validTests[n].cmd = getEmptyCommand(CMD_CODE_RM);
-    strcpy(validTests[n].cmd.equipment, "04");
+    validTests[n].cmd.equipCode = 3;
     validTests[n].cmd.sensors[0] = true;
     validTests[n].cmd.sensors[1] = true;
     validTests[n].cmd.sensors[2] = true;
@@ -393,7 +390,7 @@ void testCommandRead() {
     strcpy(validTests[n].inputTxt, "read 01 in 01");
 
     validTests[n].cmd = getEmptyCommand(CMD_CODE_READ);
-    strcpy(validTests[n].cmd.equipment, "01");
+    validTests[n].cmd.equipCode = 0;
     validTests[n].cmd.sensors[0] = true;
 
     // New test...
@@ -402,7 +399,7 @@ void testCommandRead() {
     strcpy(validTests[n].inputTxt, "read 01 02 in 02");
 
     validTests[n].cmd = getEmptyCommand(CMD_CODE_READ);
-    strcpy(validTests[n].cmd.equipment, "02");
+    validTests[n].cmd.equipCode = 1;
     validTests[n].cmd.sensors[0] = true;
     validTests[n].cmd.sensors[1] = true;
 
@@ -412,7 +409,7 @@ void testCommandRead() {
     strcpy(validTests[n].inputTxt, "read 01 02 03 in 03");
 
     validTests[n].cmd = getEmptyCommand(CMD_CODE_READ);
-    strcpy(validTests[n].cmd.equipment, "03");
+    validTests[n].cmd.equipCode = 2;
     validTests[n].cmd.sensors[0] = true;
     validTests[n].cmd.sensors[1] = true;
     validTests[n].cmd.sensors[2] = true;
@@ -423,7 +420,7 @@ void testCommandRead() {
     strcpy(validTests[n].inputTxt, "read 01 02 03 04 in 04");
 
     validTests[n].cmd = getEmptyCommand(CMD_CODE_READ);
-    strcpy(validTests[n].cmd.equipment, "04");
+    validTests[n].cmd.equipCode = 3;
     validTests[n].cmd.sensors[0] = true;
     validTests[n].cmd.sensors[1] = true;
     validTests[n].cmd.sensors[2] = true;
@@ -534,7 +531,7 @@ void testCommandList() {
     strcpy(validTests[n].inputTxt, "list sensors in 01");
 
     validTests[n].cmd = getEmptyCommand(CMD_CODE_LIST);
-    strcpy(validTests[n].cmd.equipment, "01");
+    validTests[n].cmd.equipCode = 0;
 
     // New test...
     n++;
@@ -542,7 +539,7 @@ void testCommandList() {
     strcpy(validTests[n].inputTxt, "list sensors in 02");
 
     validTests[n].cmd = getEmptyCommand(CMD_CODE_LIST);
-    strcpy(validTests[n].cmd.equipment, "02");
+    validTests[n].cmd.equipCode = 1;
 
     // New test...
     n++;
@@ -550,7 +547,7 @@ void testCommandList() {
     strcpy(validTests[n].inputTxt, "list sensors in 03");
 
     validTests[n].cmd = getEmptyCommand(CMD_CODE_LIST);
-    strcpy(validTests[n].cmd.equipment, "03");
+    validTests[n].cmd.equipCode = 2;
 
     // New test...
     n++;
@@ -558,7 +555,7 @@ void testCommandList() {
     strcpy(validTests[n].inputTxt, "list sensors in 04");
 
     validTests[n].cmd = getEmptyCommand(CMD_CODE_LIST);
-    strcpy(validTests[n].cmd.equipment, "04");
+    validTests[n].cmd.equipCode = 3;
 
     runBulkTest("LIST", validTests, testsCount, true);
 

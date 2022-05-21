@@ -20,6 +20,7 @@
 bool servValidateInput(int argc, char **argv);
 void servExplainAndDie(char **argv);
 
+void servReceiveMsg(const int servSocket, int* cliSocket, char buffer[BUF_SIZE]);
 void servAddSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
 void servListSensors(Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
 void servReadSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
@@ -37,7 +38,7 @@ int servGetSensorsCount(const Equipment equipments[EQUIP_COUNT]);
 int main(int argc, char **argv) {
 
     // Validate initialization command
-	comDebugStep("Validating input...\n");
+	comDebugStep("Validating input...");
     if (!servValidateInput(argc, argv))
         servExplainAndDie(argv);
 
@@ -48,6 +49,7 @@ int main(int argc, char **argv) {
 
     const int dbgTxtLength = 500;
     char dbgTxt[dbgTxtLength];
+    
     if (DEBUG_ENABLE) {
 
         char boundAddr[200];
@@ -61,57 +63,54 @@ int main(int argc, char **argv) {
         comDebugStep(dbgTxt);
     }
 
-    // Seed for random values
-    srand(time(NULL));
-
     // Initialize equipments list
     Equipment equipments[EQUIP_COUNT];
-    for (int i; i < EQUIP_COUNT; i++)
-        equipments[i] = getEmptyEquipment(EQUIP_IDS[i]);
+    for (int i = 0; i < EQUIP_COUNT; i++)
+        equipments[i] = getEmptyEquipment(i);
 
-    // Listen for messages
+    int cliSocket = -1;
     while (true) {
         
-        // Receive messages
+        // Receive message
         char input[BUF_SIZE];
         memset(input, 0, BUF_SIZE);
-        const int cliSocket = netAccept(servSocket);
-        size_t receivedBytes = netRecv(cliSocket, input, TIMEOUT_TRANSFER_SECS);
-        if (receivedBytes == -1)
-            comLogErrorAndDie("Failure as trying to receive messages from client");
+        servReceiveMsg(servSocket, &cliSocket, input);
 
-        // Determine command
-        input[BUF_SIZE - 1] = '\n';
+        // Parse command
         const Command cmd = getCommand(input);
-        printf("\n Command receivedBytes: %d | cmd.code / name = '%d' / '%s'", receivedBytes, cmd.code, cmd.name);
-        
-        // Validate message
         if (!cmd.isValid) {
             memset(dbgTxt, 0, dbgTxtLength);
             sprintf(dbgTxt, "\nInvalid command received: '%s'", input);
-            comLogErrorAndDie(dbgTxt);
+            comDebugStep(dbgTxt);
+            break;
         }
 
-        // Handle command
+        if (DEBUG_ENABLE) {
+            memset(dbgTxt, 0, dbgTxtLength);
+            sprintf(dbgTxt, "Command detected: [%d] '%s'", cmd.code, CMD_NAME[cmd.code]);
+            comDebugStep(dbgTxt);
+        }
+
+        // Run command
         char answer[BUF_SIZE];
         servExecuteCommand(cmd, equipments, answer);
-        break;
-    }
-    
 
-    // Determine command
-        // Add sensor
-        // Read sensor
-        // Remove sensor
-        // List equipment sensors
-    // Run command
-    // Send response
-    // Close connection
-    // End execution
+        // Send response
+        comDebugStep("Sending response...\n");
+        const bool isSuccess = netSend(cliSocket, answer);
+        if (!isSuccess)
+            comLogErrorAndDie("Sending command failure");
+
+        // End connection
+        if (cmd.code == CMD_CODE_KILL)
+            break;
+    }
 
     // Finish...
-	comDebugStep("\nClosing connection...\n");
+	comDebugStep("Closing connection...");
+    comDebugStep("\n --- THE END --- \n");
     close(servSocket);
+    close(cliSocket);
     exit(EXIT_SUCCESS);
 }
 
@@ -151,6 +150,22 @@ void servExplainAndDie(char **argv) {
     exit(EXIT_FAILURE);
 }
 
+void servReceiveMsg(const int servSocket, int* cliSocket, char buffer[BUF_SIZE]) {
+    memset(buffer, 0, BUF_SIZE);
+    
+    *cliSocket = netAccept(servSocket);
+    size_t receivedBytes = netRecv(*cliSocket, buffer, TIMEOUT_TRANSFER_SECS);
+    if (receivedBytes == -1)
+        comLogErrorAndDie("Failure as trying to receive messages from client");
+
+    printf("servReceiveMsg 4: \n");
+    if (DEBUG_ENABLE) {
+        char aux[BUF_SIZE];
+        sprintf(aux, "Input detected: '%s'", buffer);
+        comDebugStep(aux);
+    }
+}
+
 void servAddSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char* answer) {
     
     // Prepare answer string
@@ -158,6 +173,8 @@ void servAddSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char* answ
     char tempMsg[tempLength];
     memset(tempMsg, 0, tempLength);
     
+    char sensorId[2];
+    memset(sensorId, 0, 2);
     memset(answer, 0, BUF_SIZE);
     strcpy(answer, "sensor ");
 
@@ -175,7 +192,7 @@ void servAddSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char* answ
         }
 
         // Try to add
-        int sensorId = SENSOR_IDS[i];
+        strcpy(sensorId, SENSOR_IDS[i]);
         if (!equip.sensors[i]) {
             equip.sensors[i] = true;
             sprintf(tempMsg, "%s added ", sensorId);
@@ -194,30 +211,32 @@ void servRemoveSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char* a
     memset(tempMsg, 0, tempLength);
     
     memset(answer, 0, BUF_SIZE);
+    char sensorId[2];
     strcpy(answer, "sensor ");
 
     // Remove em'all
     Equipment equip = allEquipments[cmd.equipCode];
-    char equipId = EQUIP_IDS[cmd.equipCode];
-
     for (int i = 0; i < SENSOR_COUNT; i++) {
         
         if (!cmd.sensors[i])
             continue;
 
-        int sensorId = SENSOR_IDS[i];
+        strcpy(sensorId, SENSOR_IDS[i]);
         if (equip.sensors[i]) {
             equip.sensors[i] = false;
             sprintf(tempMsg, "%s removed ", sensorId);
         } else
-            sprintf(tempMsg, "%s does not exist in %s ", sensorId, equipId);
+            sprintf(tempMsg, "%s does not exist in %s ", sensorId, EQUIP_IDS[equip.code]);
 
         strcat(answer, tempMsg);
     }
 }
 
 void servReadSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char* answer) {
-    
+
+    // Seed for random values
+    srand(time(NULL));
+
     // Prepare answer string
     int tempLength = 100;
     char tempMsg[tempLength];
@@ -255,10 +274,11 @@ void servReadSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char* ans
         memset(tempMsg, 0, tempLength);
         if (!aux) {
             aux = true;
-            sprintf(tempMsg, "and ");
+            strcpy(tempMsg, "and ");
         }
 
-        sprintf(tempMsg, "%s%s ", tempMsg, SENSOR_IDS[i]);
+        strcat(tempMsg, SENSOR_IDS[i]);
+        strcat(tempMsg, " ");
         strcat(answer, tempMsg);
     }
 
@@ -275,7 +295,7 @@ void servListSensors(Command cmd, Equipment allEquipments[EQUIP_COUNT], char* an
     for (int i = 0; i < SENSOR_COUNT; i++) {
         if (equip.sensors[i]) {
             memset(tempMsg, 0, tempLength);
-            sprintf(tempMsg, "%d ", SENSOR_IDS[i]);
+            sprintf(tempMsg, "%s ", SENSOR_IDS[i]);
             strcat(answer, tempMsg);
         }
     }

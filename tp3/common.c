@@ -15,6 +15,8 @@
  * ------------------------------------------------
  */
 
+const char NET_END_SEQ[6] = "#_#";
+
 const char SENSOR_IDS[4][2] = { {"01"}, {"02"}, {"03"}, {"04"} };
 const char EQUIP_IDS[4][2] = { {"01"}, {"02"}, {"03"}, {"04"} };
 
@@ -29,9 +31,8 @@ const char CMD_PATTERN[CMD_COUNT][45] = {
     {"^read (0[1234] ){1,4}in 0[1234]$"},
     {"^kill$"}
 };
-const char CMD_PATTERN_END[] = " in ##";
 
-typedef enum { FD_ACTION_RD = 10, FD_ACTION_WT } FdActionEnum;
+typedef enum { SOCK_ACTION_RD = 10, SOCK_ACTION_WT } SocketActionEnum;
 
 /**
  * ------------------------------------------------
@@ -39,7 +40,7 @@ typedef enum { FD_ACTION_RD = 10, FD_ACTION_WT } FdActionEnum;
  * ------------------------------------------------
  */
 
-bool netIsActionAvailable(int socket, const FdActionEnum action, struct timeval *timeout);
+bool netIsActionAvailable(int socket, const SocketActionEnum action, struct timeval *timeout);
 
 /**
  * ------------------------------------------------
@@ -47,14 +48,22 @@ bool netIsActionAvailable(int socket, const FdActionEnum action, struct timeval 
  * ------------------------------------------------
  */
 
-void comLogErrorAndDie(const char *msg) {
-	perror(msg);
+void comLogErrorAndDie(char *msg) {
+
+	if (DEBUG_ENABLE) {
+		if (errno) {
+			strcat(msg, "\nDESC");
+			perror(msg);
+		} else
+			printf("\n%s\n", msg);
+	}
+
 	exit(EXIT_FAILURE);
 }
 
 void comDebugStep(const char *text) {
 	if (DEBUG_ENABLE)
-		printf("%s", text);
+		printf("%s\n", text);
 }
 
 /**
@@ -71,9 +80,9 @@ int getEquipmentCodeById(const char* id) {
 	return -1;
 }
 
-Equipment getEmptyEquipment(const char* id) {
+Equipment getEmptyEquipment(const EquipCodeEnum code) {
     Equipment equip;
-    strcpy(equip.id, id);
+    equip.code = code;
     equip.sensors[0] = false;
     equip.sensors[1] = false;
     equip.sensors[2] = false;
@@ -85,7 +94,6 @@ Command getGenericCommand(void) {
     Command command;
     command.isValid = false;
     command.equipCode = getEquipmentCodeById("");
-    memset(command.name, '\0', sizeof(command.name));
     for (int i = 0; i < SENSOR_COUNT; i++)
         command.sensors[i] = false;
     return command;
@@ -94,7 +102,6 @@ Command getGenericCommand(void) {
 Command getEmptyCommand(CmdCodeEnum code) {
     Command command = getGenericCommand();
     command.code = code;
-    strcpy(command.name, CMD_NAME[code]);
     return command;
 }
 
@@ -112,7 +119,6 @@ Command getCommand(const char* input) {
 
 		cmd.isValid = true;
 		cmd.code = i;
-		strcpy(cmd.name, CMD_NAME[i]);
         break;
 	}
 
@@ -258,11 +264,15 @@ int netConnect(const int port, const char *addrStr, const int timeoutSecs) {
 	return sock;
 }
 
-bool netSend(const int socket, const char *buffer, const unsigned bytesToSend) {
+bool netSend(const int socket, const char *msg) {
 
-    printf("\nnetSend: '%s'", buffer);
+	char buffer[BUF_SIZE + strlen(NET_END_SEQ)];
+	strcpy(buffer, msg);
+	strcat(buffer, NET_END_SEQ);
 
 	ssize_t acc = 0;
+	const ssize_t bytesToSend = strlen(buffer);
+
 	while (true) {
 		
 		ssize_t sentBytes = send(socket, buffer + acc, bytesToSend - acc, 0/* MSG_DONTWAIT */);
@@ -287,7 +297,7 @@ int netAccept(const int servSocket) {
 	if (clientSocket == -1) {
 		if (errno != EAGAIN && errno != EWOULDBLOCK)
 			comLogErrorAndDie("Failure as trying to accept client connection");
-		comDebugStep("\nDisconnecting server because of innactivity...\n\n");
+		comDebugStep("Disconnecting server because of inactivity...\n\n");
 	}
 
 	return clientSocket;
@@ -302,11 +312,12 @@ ssize_t netRecv(const int cliSocket, char *buffer, const int timeoutSecs) {
 	size_t acc = 0;
 	while (true) {
 		
-		printf("\nwaiting... | acc: %d", acc);
-		const bool isThereAnyData = netIsActionAvailable(cliSocket, FD_ACTION_RD, &timeout);
+		// Wait for some data
+		const bool isThereAnyData = netIsActionAvailable(cliSocket, SOCK_ACTION_RD, &timeout);
         if (!isThereAnyData)
             break;
 
+		// Receive data
 		ssize_t receivedBytes = 0;
 		receivedBytes = recv(cliSocket, buffer + acc, BUF_SIZE - acc, MSG_DONTWAIT);
 		if (receivedBytes == 0) // Transmission is over
@@ -314,13 +325,23 @@ ssize_t netRecv(const int cliSocket, char *buffer, const int timeoutSecs) {
 
 		if (receivedBytes == -1) // Something wrong is not right
 			return (errno == EAGAIN || errno == EWOULDBLOCK) ? acc : -1;
+
+		acc += receivedBytes;
+		
+		// Check if message is over
+		bool isOver = strEndsWith(buffer, NET_END_SEQ);
+		if (isOver) {
+			int endSeqSize = strlen(NET_END_SEQ);
+			acc -= endSeqSize; // Don't compute control characters
+			buffer[strlen(buffer) - endSeqSize] = '\0';
+			break;
+		}
 	}
 
-	printf("\ndone... | acc: %d", acc);
 	return acc;
 }
 
-bool netIsActionAvailable(int socket, const FdActionEnum action, struct timeval *timeout) {
+bool netIsActionAvailable(int socket, const SocketActionEnum action, struct timeval *timeout) {
 
 	if (!socket || !action)
 		comLogErrorAndDie("Invalid arguments for action availability check");
@@ -331,9 +352,9 @@ bool netIsActionAvailable(int socket, const FdActionEnum action, struct timeval 
 	fd_set writeFds;
 	FD_ZERO(&writeFds);
 
-	if (action == FD_ACTION_RD)
+	if (action == SOCK_ACTION_RD)
 		FD_SET(socket, &readFds);
-	else if (action == FD_ACTION_WT)
+	else if (action == SOCK_ACTION_WT)
 		FD_SET(socket, &writeFds);
 	else
 		comLogErrorAndDie("Invalid action type for availability check");
@@ -349,8 +370,8 @@ bool netIsActionAvailable(int socket, const FdActionEnum action, struct timeval 
 	}
 
 	if (result != 1
-		|| (action == FD_ACTION_RD && FD_ISSET(socket, &readFds) == 0)
-		|| (action == FD_ACTION_WT && FD_ISSET(socket, &writeFds) == 0)
+		|| (action == SOCK_ACTION_RD && FD_ISSET(socket, &readFds) == 0)
+		|| (action == SOCK_ACTION_WT && FD_ISSET(socket, &writeFds) == 0)
 	)
 		comLogErrorAndDie("Availability check: Something wrong isn't right... D:");
 	
@@ -409,7 +430,19 @@ bool strReadFromStdIn(char *buffer, size_t buffLength) {
 }
 
 bool strStartsWith(const char *target, const char *prefix) {
+	size_t targetLength = strlen(target);
+    size_t prefixLength = strlen(prefix);
+	if (prefixLength > targetLength)
+        return false;
    return strncmp(target, prefix, strlen(prefix)) == 0;
+}
+
+bool strEndsWith(const char *target, const char *suffix) {
+	size_t targetLength = strlen(target);
+    size_t suffixLength = strlen(suffix);
+	if (suffixLength > targetLength)
+        return false;
+    return strncmp(target + targetLength - suffixLength, suffix, suffixLength) == 0;
 }
 
 void strGetSubstring(const char *src, char *dst, size_t start, size_t end) {

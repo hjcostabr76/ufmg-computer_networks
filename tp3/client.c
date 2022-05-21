@@ -28,21 +28,21 @@ int main(int argc, char **argv) {
     char dbgTxt[dbgTxtLength];
 
 	// Validate initialization command
-	comDebugStep("Validating initialization command...\n");
+	comDebugStep("Validating initialization command...");
     if (!cliValidateInput(argc, argv))
 		cliExplainAndDie(argv);
-	comDebugStep("Initialization is ok!\n");
+	comDebugStep("Initialization is ok!");
 
 
 	// Create socket
-	comDebugStep("Creating socket...\n");
+	comDebugStep("Creating socket...");
 
 	const char *addrStr = argv[1];
 	const char *portStr = argv[2];
 	int sock = netConnect(atoi(portStr), addrStr, TIMEOUT_CONN_SECS);
 
 	if (DEBUG_ENABLE) {
-		sprintf(dbgTxt, "\nConnected to %s:%s\n", addrStr, portStr);
+		sprintf(dbgTxt, "Connected to %s:%s", addrStr, portStr);
 		comDebugStep(dbgTxt);
 	}
 
@@ -53,30 +53,23 @@ int main(int argc, char **argv) {
 		if (!strReadFromStdIn(input, BUF_SIZE))
             comLogErrorAndDie("Failure as trying to read user input");
 
-		memset(dbgTxt, 0, dbgTxtLength);
-		sprintf(dbgTxt, "\nInput: \"%s\" %lu...\n", input, strlen(input));
-		comDebugStep(dbgTxt);
-
-		// TODO:...
-		// Check if end is required
-		// char regexMsg[100];
-        // const bool shouldFinish = strRegexMatch(CMD_PATTERN[CMD_CODE_KILL], input, regexMsg);
-        // if (shouldFinish)
-        //     break;
-
 		// Send command
 		char answer[BUF_SIZE];
 		cliSendCommand(sock, input, answer);
-		printf("\n answer: '%s'", answer); // TODO: Remove...
-		break;
+
+		// Finish execution
+		if (strcmp(answer, CMD_NAME[CMD_CODE_KILL]) == 0)
+			break;
+
+		// Exhibit response
+		printf("%s\n", answer);
 
 	} while (true);
 
 	// Finish
-	if (DEBUG_ENABLE)
-		comDebugStep("\nThe end...\n");
-
+	comDebugStep("Closing connection...");
 	close(sock);
+	comDebugStep("\n --- THE END --- \n");
 	exit(EXIT_SUCCESS);
 }
 
@@ -114,12 +107,12 @@ void cliSendCommand(const int socket, const char* input, char *answer) {
 
 	// Send command
 	comDebugStep("Sending command...\n");
-	const bool isSuccess = netSend(socket, input, strlen(input));
+	const bool isSuccess = netSend(socket, input);
 	if (!isSuccess)
 		comLogErrorAndDie("Sending command failure");
 
 	// Wait for response
-	comDebugStep("Waiting server answer...\n");
+	comDebugStep("Waiting server answer..");
 	memset(answer, 0, BUF_SIZE);
 	size_t receivedBytes = netRecv(socket, answer, TIMEOUT_TRANSFER_SECS);
 	if (receivedBytes == -1)
@@ -128,7 +121,7 @@ void cliSendCommand(const int socket, const char* input, char *answer) {
 	if (DEBUG_ENABLE) {
 		char dbgTxt[BUF_SIZE];
 		memset(dbgTxt, 0, BUF_SIZE);
-		sprintf(dbgTxt, "\tReceived %lu bytes!\n", receivedBytes);
+		sprintf(dbgTxt, "Server response received with %lu bytes", receivedBytes);
 		comDebugStep(dbgTxt);
 	}
 }
