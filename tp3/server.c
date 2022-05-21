@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <pthread.h>
 #include <sys/socket.h>
 #include <inttypes.h>
 #include <arpa/inet.h>
@@ -11,17 +10,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
-
-/**
- * TODO: 2022-05-13 - Solve all todo's...
- */
-
-/**
- * ------------------------------------------------
- * == ABSTRACTS ===================================
- * ------------------------------------------------
- */
-
 
 /**
  * ------------------------------------------------
@@ -46,24 +34,17 @@ int main(int argc, char **argv) {
         servExplainAndDie(argv);
 
     // Create socket
+    comDebugStep("Creating server socket...\n");
+    const int port = atoi(argv[2]);
+    int socket = netListen(port, TIMEOUT_CONN_SECS, MAX_CONNECTIONS);
+
     const int dbgTxtLength = 500;
     char dbgTxt[dbgTxtLength];
-    const int port = atoi(argv[2]);
-
-    struct timeval timeoutConn;
-    memset(&timeoutConn, 0, sizeof(timeoutConn));
-    timeoutConn.tv_sec = TIMEOUT_CONN_SECS;
-    timeoutConn.tv_usec = 0;
-
-    // Listen for messages
-    comDebugStep("Creating server socket...\n");
-    int socket = netListen(port, &timeoutConn, MAX_CONNECTIONS);
-
     if (DEBUG_ENABLE) {
 
         char boundAddr[200];
         memset(dbgTxt, 0, dbgTxtLength);
-        if (!posixSetSocketAddressString(socket, boundAddr)) {
+        if (!netSetSocketAddressString(socket, boundAddr)) {
             sprintf(dbgTxt, "\nFailure as trying to exhibit bound address...\n");
             comLogErrorAndDie(dbgTxt);
         }
@@ -72,7 +53,23 @@ int main(int argc, char **argv) {
         comDebugStep(dbgTxt);
     }
 
-    // Validate messages
+    // Listen for messages
+    while (true) {
+        
+        char input[BUF_SIZE];
+        memset(input, 0, BUF_SIZE);
+        size_t receivedBytes = netRecv(socket, input, TIMEOUT_TRANSFER_SECS);
+        if (receivedBytes == -1)
+            comLogErrorAndDie("Failure as trying to receive messages from client");
+
+        // Validate messages
+        // Determine command
+        const Command cmd = getCommand(input);
+        printf("\n Command cmd.code = '%d'", cmd.code);
+        break;
+    }
+    
+
     // Determine command
         // Add sensor
         // Read sensor
@@ -110,7 +107,7 @@ bool servValidateInput(int argc, char **argv) {
 
     // Validate port
 	const char *portStr = argv[1];
-	if (!comValidateNumericString(portStr, strlen(portStr))) {
+	if (!strValidateNumeric(portStr, strlen(portStr))) {
 		comDebugStep("Invalid Port!\n");
 		return false;
 	}

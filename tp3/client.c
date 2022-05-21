@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "common.h"
 
@@ -36,14 +37,9 @@ int main(int argc, char **argv) {
 	// Create socket
 	comDebugStep("Creating socket...\n");
 
-	struct timeval connTimeout;
-	memset(&connTimeout, 0, sizeof(connTimeout));
-	connTimeout.tv_sec = TIMEOUT_CONN_SECS;
-	connTimeout.tv_usec = 0;
-
 	const char *addrStr = argv[1];
 	const char *portStr = argv[2];
-	int sock = netConnect(atoi(portStr), addrStr, &connTimeout);
+	int sock = netConnect(atoi(portStr), addrStr, TIMEOUT_CONN_SECS);
 
 	if (DEBUG_ENABLE) {
 		sprintf(dbgTxt, "\nConnected to %s:%s\n", addrStr, portStr);
@@ -70,7 +66,7 @@ int main(int argc, char **argv) {
 
 		// Send command
 		char answer[BUF_SIZE];
-		sendCommand(sock, input, answer);
+		cliSendCommand(sock, input, answer);
 		printf("\n answer: '%s'", answer); // TODO: Remove...
 		break;
 
@@ -117,20 +113,15 @@ void cliExplainAndDie(char **argv) {
 void cliSendCommand(const int socket, const char* input, char *answer) {
 
 	// Send command
-	struct timeval transferTimeout;
-	memset(&transferTimeout, 0, sizeof(transferTimeout));
-	transferTimeout.tv_sec = TIMEOUT_TRANSFER_SECS;
-	transferTimeout.tv_usec = 0;
-	
 	comDebugStep("Sending command...\n");
-	const bool isSuccess = netSend(socket, input, strlen(input), &transferTimeout);
+	const bool isSuccess = netSend(socket, input, strlen(input));
 	if (!isSuccess)
 		comLogErrorAndDie("Sending command failure");
 
 	// Wait for response
 	comDebugStep("Waiting server answer...\n");
 	memset(answer, 0, BUF_SIZE);
-	size_t receivedBytes = netRecv(socket, answer, &transferTimeout);
+	size_t receivedBytes = netRecv(socket, answer, TIMEOUT_TRANSFER_SECS);
 	if (receivedBytes == -1)
 		comLogErrorAndDie("Failure as trying to receive server answer");
 
@@ -138,6 +129,6 @@ void cliSendCommand(const int socket, const char* input, char *answer) {
 		char dbgTxt[BUF_SIZE];
 		memset(dbgTxt, 0, BUF_SIZE);
 		sprintf(dbgTxt, "\tReceived %lu bytes!\n", receivedBytes);
-		commonDebugStep(dbgTxt);
+		comDebugStep(dbgTxt);
 	}
 }

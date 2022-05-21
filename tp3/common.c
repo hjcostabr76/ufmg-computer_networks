@@ -134,7 +134,7 @@ Command getCommand(const char* input) {
  * ------------------------------------------------
  */
 
-int netListen(const int port, const struct timeval *timeout, const int maxConnections) {
+int netListen(const int port, const int timeoutSecs, const int maxConnections) {
 
 	// Validate params
 	if (!port)
@@ -150,11 +150,15 @@ int netListen(const int port, const struct timeval *timeout, const int maxConnec
 
     // Avoid that port used in an execution become deactivated for 02 min after conclustion
     int enableAddrReuse = 1;
-    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &enableAddrReuse, sizeof(int)) != 0)
+    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &enableAddrReuse, sizeof(int)) != 0) {
         comLogErrorAndDie("Failure as creating listening socket [2]");
+	}
 
 	// Sets linstening timeout
-    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, timeout, sizeof(*timeout)) != 0)
+	struct timeval timeout;
+    timeout.tv_sec = timeoutSecs;
+    timeout.tv_usec = 0;
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0)
 		comLogErrorAndDie("Failure as creating listening socket [3]");
 
 	// Enable ipv4 connections in ipv6 socket
@@ -183,7 +187,7 @@ int netListen(const int port, const struct timeval *timeout, const int maxConnec
 	return sock;
 }
 
-int netConnect(const int port, const char *addrStr, const struct timeval *timeout) {
+int netConnect(const int port, const char *addrStr, const int timeoutSecs) {
 
 	// Valida endereco
 	if (!port)
@@ -206,7 +210,10 @@ int netConnect(const int port, const char *addrStr, const struct timeval *timeou
 	if (sock == -1)
 		comLogErrorAndDie("Failure as creating connection socket [1]");
 
-	if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, timeout, sizeof(*timeout)) != 0)
+	struct timeval timeout;
+    timeout.tv_sec = timeoutSecs;
+    timeout.tv_usec = 0;
+	if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0)
 		comLogErrorAndDie("Failure as creating connection socket [2]");
 
 	// Trata ipv4
@@ -232,7 +239,7 @@ int netConnect(const int port, const char *addrStr, const struct timeval *timeou
 	return sock;
 }
 
-bool netSend(const int socket, const char *buffer, const unsigned bytesToSend, struct timeval *timeout) {
+bool netSend(const int socket, const char *buffer, const unsigned bytesToSend) {
 
     printf("\nnetSend: '%s'", buffer);
 
@@ -252,14 +259,17 @@ bool netSend(const int socket, const char *buffer, const unsigned bytesToSend, s
 	return acc >= bytesToSend;
 }
 
-ssize_t netRecv(const int socket, char *buffer, struct timeval *timeout) {
+ssize_t netRecv(const int socket, char *buffer, const int timeoutSecs) {
+
+	struct timeval timeout;
+    timeout.tv_sec = timeoutSecs;
+    timeout.tv_usec = 0;
 
 	size_t acc = 0;
-
 	while (true) {
 		
 		ssize_t answer = 0;
-		const bool isThereAnyData = !netIsActionAvailable(socket, FD_ACTION_RD, timeout);
+		const bool isThereAnyData = !netIsActionAvailable(socket, FD_ACTION_RD, &timeout);
         if (!isThereAnyData)
             break;
 
