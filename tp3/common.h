@@ -16,6 +16,7 @@
 
 #define MAX_CONNECTIONS 1
 #define TIMEOUT_CONN_SECS 15
+#define TIMEOUT_TRANSFER_SECS 2
 
 #define CMD_COUNT 5
 #define SENSOR_COUNT 4
@@ -74,9 +75,12 @@ Command getCommand(const char* input);
 
 /** -- NETWORK ---------- */
 
-// int posixConnect(const int port, const char *addrStr, const struct timeval *timeout);
-bool netSetSocketAddressString(int socket, char *boundAddr);
+int netConnect(const int port, const char *addrStr, const struct timeval *timeout);
 int netListen(const int port, const struct timeval *timeout, const int maxConnections);
+bool netSend(const int socket, const char *buffer, const unsigned bytesToSend, struct timeval *timeout);
+ssize_t netRecv(const int socket, char *buffer, struct timeval *timeout);
+int netGetIpType(const char *ipTypeStr);
+bool netSetSocketAddressString(int socket, char *boundAddr);
 
 /** -- STRING ----------- */
 

@@ -7,16 +7,10 @@
 #include <sys/socket.h>
 #include <inttypes.h>
 #include <arpa/inet.h>
-
-// TODO: qual das 02?
-// #include <sys/time.h>
 #include <time.h>
-// TODO: qual das 02?
-
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
-
 
 /**
  * TODO: 2022-05-13 - Solve all todo's...
@@ -24,28 +18,10 @@
 
 /**
  * ------------------------------------------------
- * == ABSTACTS ====================================
+ * == ABSTRACTS ===================================
  * ------------------------------------------------
  */
 
-struct ConnThreadData {
-    int socket;
-    int addrFamily;
-};
-
-struct ClientData {
-    int socket;
-    struct sockaddr_storage address;
-    struct timeval timeout;
-};
-
-/**
- * TODO: 2021-06-04 - ADD Descricao
- */
-enum ServerRecvValidationEnum {
-    RCV_VALIDATION_NUMERIC = 1,
-    RCV_VALIDATION_LCASE
-};
 
 /**
  * ------------------------------------------------
@@ -53,22 +29,8 @@ enum ServerRecvValidationEnum {
  * ------------------------------------------------
  */
 
-/**
- * TODO: 2021-06-03 - ADD Descriptions
- */
-
 bool servValidateInput(int argc, char **argv);
 void servExplainAndDie(char **argv);
-int getIpType(const char *ipTypeStr);
-// void *servThreadConnHandler(void *data);
-
-void servRecvParam(
-    struct ClientData *client,
-    char *buffer,
-    const unsigned bytesToRecv,
-    const enum ServerRecvValidationEnum validationType,
-    const char *opLabel
-);
 
 /**
  * ------------------------------------------------
@@ -76,13 +38,7 @@ void servRecvParam(
  * ------------------------------------------------
  */
 
-/**
- * TODO: 2022-05-14 - Diferenciar questao dos tipos de IP
- */
-
 int main(int argc, char **argv) {
-
-    comDebugStep("\nStarting...\n\n");
 
     // Validate initialization command
 	comDebugStep("Validating input...\n");
@@ -90,8 +46,8 @@ int main(int argc, char **argv) {
         servExplainAndDie(argv);
 
     // Create socket
-    const int notificationMsgLen = 500;
-    char notificationMsg[notificationMsgLen];
+    const int dbgTxtLength = 500;
+    char dbgTxt[dbgTxtLength];
     const int port = atoi(argv[2]);
 
     struct timeval timeoutConn;
@@ -101,24 +57,20 @@ int main(int argc, char **argv) {
 
     // Listen for messages
     comDebugStep("Creating server socket...\n");
-    int socket = posixListen(port, &timeoutConn, MAX_CONNECTIONS);
+    int socket = netListen(port, &timeoutConn, MAX_CONNECTIONS);
 
     if (DEBUG_ENABLE) {
 
         char boundAddr[200];
-        memset(notificationMsg, 0, notificationMsgLen);
+        memset(dbgTxt, 0, dbgTxtLength);
         if (!posixSetSocketAddressString(socket, boundAddr)) {
-            sprintf(notificationMsg, "\nFailure as trying to exhibit bound address...\n");
-            comLogErrorAndDie(notificationMsg);
+            sprintf(dbgTxt, "\nFailure as trying to exhibit bound address...\n");
+            comLogErrorAndDie(dbgTxt);
         }
 
-        sprintf(notificationMsg, "\nAll set! Server is bound to %s:%d\nWaiting for connections...\n", boundAddr, port);
-        comDebugStep(notificationMsg);
+        sprintf(dbgTxt, "\nAll set! Server is bound to %s:%d\nWaiting for connections...\n", boundAddr, port);
+        comDebugStep(dbgTxt);
     }
-
-    /**
-     * TODO: 2022-05-13 - Go on from here...
-     */
 
     // Validate messages
     // Determine command
@@ -131,139 +83,11 @@ int main(int argc, char **argv) {
     // Close connection
     // End execution
 
-    // while (1) {
-
-    //     // Criar socket para receber conexoes de clientes
-    //     struct sockaddr_storage clientAddr;
-    //     socklen_t clientAddrLen = sizeof(clientAddr);
-
-    //     int clientSocket = accept(socket, (struct sockaddr *)(&clientAddr), &clientAddrLen);
-    //     if (clientSocket == -1) {
-            
-    //         if (errno != EAGAIN && errno != EWOULDBLOCK)
-    //             comLogErrorAndDie("Failure as trying to accept client connection");
-
-    //         comDebugStep("\nDisconnecting server because of innactivity...\n\n");
-    //         break;
-    //     }
-
-    //     // Define dados para thread de tratamento da nova conexao
-    //     struct ClientData *clientData = malloc(sizeof(*clientData));
-    //     if (!clientData)
-    //         comLogErrorAndDie("Failure as trying to set new client connection data");
-
-    //     struct timeval timeoutTransfer;
-    //     timeoutTransfer.tv_sec = TIMEOUT_TRANSFER_SECS;
-    //     timeoutTransfer.tv_usec = 0;
-
-    //     clientData->socket = clientSocket;
-    //     memcpy(&(clientData->address), &clientAddr, sizeof(clientAddr));
-    //     memcpy(&(clientData->timeout), &timeoutTransfer, sizeof(timeoutTransfer));
-
-    //     // Inicia nova thread para tratar a nova conexao
-    //     pthread_t tid;
-    //     pthread_create(&tid, NULL, servThreadConnHandler, clientData);
-    // }
-
-    // Encerra conexao
+    // Finish...
 	comDebugStep("\nClosing connection...\n");
     close(socket);
-
     exit(EXIT_SUCCESS);
 }
-
-/**
- * TODO: 2021-06-07 - ADD Descricao
- */
-// void *servThreadConnHandler(void *threadInput) {
-
-//     comDebugStep("\n[thread: connection] Starting new thread..\n");
-//     char errMsg[BUF_SIZE];
-    
-//     // Avalia entrada
-//     struct ClientData *client = (struct ClientData *)threadInput;
-//     struct sockaddr *clientAddr = (struct sockaddr *)(&client->address);
-
-//     // Notifica origem da conexao
-//     if (DEBUG_ENABLE) {
-//         char clientAddrStr[INET_ADDRSTRLEN + 1] = "";
-//         if (posixAddressToString(clientAddr, clientAddrStr)) {
-//             memset(errMsg, 0, BUF_SIZE);
-//             sprintf(errMsg, "[thread: connection] Connected to client at %s...\n", clientAddrStr);
-//             comDebugStep(errMsg);
-//         }
-//     }
-
-//     // Receber tamanho do texto a ser decodificado
-//     char buffer[BUF_SIZE];
-    
-//     comDebugStep("[thread: connection] Receiving text length...\n");
-//     int bytesToReceive = sizeof(uint32_t);
-//     servRecvParam(client, buffer, bytesToReceive, RCV_VALIDATION_NUMERIC, "text length");
-//     const uint32_t txtLength = htonl(atoi(buffer));
-
-//     if (DEBUG_ENABLE) {
-//         memset(errMsg, 0, txtLength);
-//         sprintf(errMsg, "\tText Length: \"%u\"\n", txtLength);
-//         comDebugStep(errMsg);
-//     }
-
-//     // Receber chave da cifra
-//     comDebugStep("[thread: connection] Receiving cipher key...\n");
-//     memset(buffer, 0, BUF_SIZE);
-//     bytesToReceive = sizeof(uint32_t);
-//     servRecvParam(client, buffer, bytesToReceive, RCV_VALIDATION_NUMERIC, "cipher key");
-//     const uint32_t cipherKey = htonl(atoi(buffer));
-
-//     if (DEBUG_ENABLE) {
-//         memset(errMsg, 0, txtLength);
-//         sprintf(errMsg, "\tCipher key: \"%u\"\n", cipherKey);
-//         comDebugStep(errMsg);
-//     }
-
-//     // Receber texto cifrado
-//     comDebugStep("[thread: connection] Receiving ciphered text...\n");
-//     memset(buffer, 0, BUF_SIZE);
-//     bytesToReceive = txtLength;
-//     servRecvParam(client, buffer, bytesToReceive, RCV_VALIDATION_LCASE, "ciphered text");
-    
-//     if (DEBUG_ENABLE) {
-//         memset(errMsg, 0, BUF_SIZE);
-//         sprintf(errMsg, "\tCiphered text is: \"%.600s...\"\n", buffer);
-//         comDebugStep(errMsg);
-//     }
-
-//     /**
-//      * TODO: 2021-06-08 - Remover essa gambiarra...
-//      */
-//     char doubleCheckBuffer[10];
-//     memset(doubleCheckBuffer, 0, 10);
-// 	posixRecv(client->socket, doubleCheckBuffer, &client->timeout);
-// 	if (strcmp(doubleCheckBuffer, "1") != 0) {
-// 		sprintf(errMsg, "Double check failure: \"%s\"\n", doubleCheckBuffer);
-// 		comLogErrorAndDie(errMsg);
-// 	}
-
-//     // Decodificar texto
-//     comDebugStep("[thread: connection] Decrypting text...\n");
-	
-//     char text[txtLength];
-// 	memset(text, 0, txtLength);
-// 	caesarDecipher(buffer, txtLength, text, cipherKey);
-//     comDebugStep("\tText successfully decrypted:\n");
-    
-//     puts(text);
-
-//     // Enviar
-//     comDebugStep("[thread: connection] Sending answer to client...\n");
-//     if (!posixSend(client->socket, text, txtLength, &client->timeout))
-//         comLogErrorAndDie("Failure as sending answer to client");
-
-//     // Encerra conexao
-// 	comDebugStep("\n[thread: connection] Done!\n");
-//     close(client->socket);
-//     pthread_exit(EXIT_SUCCESS);
-// }
 
 /**
  * ------------------------------------------------
@@ -279,7 +103,7 @@ bool servValidateInput(int argc, char **argv) {
     }
 
     // Validate ip type
-	if (getIpType(argv[1]) == -1) {
+	if (netGetIpType(argv[1]) == -1) {
 		comDebugStep("Invalid IP type!\n");
 		return false;
 	}
@@ -294,90 +118,25 @@ bool servValidateInput(int argc, char **argv) {
 	return true;
 }
 
-/**
- * @brief Get the Ip Type constant value;
- * In case of invalid string, returns -1;
- * 
- * @param ipTypeStr 
- * @return int 
- */
-int getIpType(const char *ipTypeStr) {
-    if (strcmp(ipTypeStr, "v4") == 0)
-        return AF_INET;
-    if (strcmp(ipTypeStr, "v6") == 0)
-        return AF_INET6;
-    return -1;
-}
-
-
-/**
- * TODO: 2022-05-12 - ADD Descricao
- */
 void servExplainAndDie(char **argv) {
     printf("\nInvalid Input\n");
     printf("Usage: %s [ip type] [port number]>\n", argv[0]);
-	printf("Example: %s v4 5000\n", argv[0]);
+	printf("Example: %s v4 51511\n", argv[0]);
     exit(EXIT_FAILURE);
 }
 
 /**
- * NOTE: Funcao 'privada'
+ * @brief Initialize new equipment with all sensors deactivated.
+ * 
+ * @param id  TODO...
+ * @return Equipment 
  */
-// void servCloseThreadOnError(const struct ClientData *client, const char *errMsg) {
-// 	close(client->socket);
-//     perror(errMsg);
-//     puts("\nClosing thread because of failure... :(\n");
-//     pthread_exit(NULL);
-// }
-
-/**
- * NOTE: Funcao 'privada'
- */
-// void servSendFailureResponse(struct ClientData *client, const char *errMsg) {
-// 	posixSend(client->socket, "0", 1, &client->timeout);
-// 	servCloseThreadOnError(client, errMsg);
-// }
-
-// void serverRecvParam(
-//     struct ClientData *client,
-//     char *buffer,
-//     const unsigned bytesToRecv,
-//     const enum ServerRecvValidationEnum validationType,
-//     const char *opLabel
-// ) {
-
-//     char errMsg[BUF_SIZE];
-
-//     // Valida parametros
-//     if (validationType != RCV_VALIDATION_NUMERIC && validationType != RCV_VALIDATION_LCASE) {
-//         sprintf(errMsg, "Failure as receiving data from client [%s] [1]", opLabel);
-//         servCloseThreadOnError(client, errMsg);
-//     }
-    
-//     // Recebe valor do cliente
-//     size_t receivedBytes = posixRecv(client->socket, buffer, &client->timeout);
-//     if (receivedBytes == -1) {
-//         sprintf(errMsg, "Failure as receiving data from client [%s] [2]", opLabel);
-//         servCloseThreadOnError(client, errMsg);
-//     }
-
-//     // Validar: Contagem de bytes
-//     if (receivedBytes < bytesToRecv) {
-//         sprintf(errMsg, "Failure as receiving data from client [%s] [3]", opLabel);
-//         servCloseThreadOnError(client, errMsg);
-//     }
-
-//     // Validar: Conteudo recebido
-//     if ((validationType == RCV_VALIDATION_NUMERIC && !comValidateNumericString(buffer, strlen(buffer)))
-//         || (validationType == RCV_VALIDATION_LCASE && !comValidateLCaseString(buffer, strlen(buffer)))
-//     ) {
-//         sprintf(errMsg, "Invalid data sent by client [%s]: \"%.800s\"", opLabel, buffer);
-//         servSendFailureResponse(client, errMsg);
-//     }
-
-//     const char *aux = "1";
-//     if (!posixSend(client->socket, aux, 1, &client->timeout)) {
-//         sprintf(errMsg, "Failure as sending receiving confirmation to client [%s]", opLabel);
-//         servSendFailureResponse(client, errMsg);
-//     }
-// }
+Equipment getNewEquipment(const char* id) {
+    Equipment E;
+    strcpy(E.id, id);
+    E.sensors[0] = false;
+    E.sensors[1] = false;
+    E.sensors[2] = false;
+    E.sensors[3] = false;
+    return E;
+}

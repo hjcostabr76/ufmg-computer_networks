@@ -7,6 +7,7 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include <regex.h>
+#include <errno.h>
 
 /**
  * ------------------------------------------------
@@ -29,6 +30,15 @@ const char CMD_PATTERN[CMD_COUNT][45] = {
 };
 const char CMD_PATTERN_END[] = " in ##";
 
+typedef enum { FD_ACTION_RD = 10, FD_ACTION_WT } FdActionEnum;
+
+/**
+ * ------------------------------------------------
+ * == Local Headers ===============================
+ * ------------------------------------------------
+ */
+
+bool netIsActionAvailable(int socket, const FdActionEnum action, struct timeval *timeout);
 
 /**
  * ------------------------------------------------
@@ -124,10 +134,6 @@ Command getCommand(const char* input) {
  * ------------------------------------------------
  */
 
-short int netIsValidAddrFamily(const int addrFamily) {
-	return (addrFamily == AF_INET || addrFamily == AF_INET6);
-}
-
 int netListen(const int port, const struct timeval *timeout, const int maxConnections) {
 
 	// Validate params
@@ -177,6 +183,137 @@ int netListen(const int port, const struct timeval *timeout, const int maxConnec
 	return sock;
 }
 
+int netConnect(const int port, const char *addrStr, const struct timeval *timeout) {
+
+	// Valida endereco
+	if (!port)
+		comLogErrorAndDie("invalid connection port");
+
+    // Determina protocolo
+	struct sockaddr_storage addrStorage;
+
+    struct in_addr inaddr4; // 32-bit IP address
+	const int isIpv4 = inet_pton(AF_INET, addrStr, &inaddr4);
+
+	struct in6_addr inaddr6; // 128-bit IPv6 address
+	const int isIpv6 = !isIpv4 ? inet_pton(AF_INET6, addrStr, &inaddr6) : 0;
+
+	if (!isIpv4 && !isIpv6)
+		comLogErrorAndDie("Invalid address family to create connection socket");
+
+	// Cria socket
+	int sock = socket(isIpv4 ? AF_INET : AF_INET6, SOCK_STREAM, 0);
+	if (sock == -1)
+		comLogErrorAndDie("Failure as creating connection socket [1]");
+
+	if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, timeout, sizeof(*timeout)) != 0)
+		comLogErrorAndDie("Failure as creating connection socket [2]");
+
+	// Trata ipv4
+    if (isIpv4) {
+		struct sockaddr_in *addr4 = (struct sockaddr_in *)&addrStorage;
+        addr4->sin_family = AF_INET;
+        addr4->sin_port = htons(port);
+        addr4->sin_addr = inaddr4;
+
+    // Trata ipv6
+    } else {
+		struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)&addrStorage;
+        addr6->sin6_family = AF_INET6;
+        addr6->sin6_port = htons(port);
+        // addr6->sin6_addr = inaddr6
+        memcpy(&(addr6->sin6_addr), &inaddr6, sizeof(inaddr6));
+    }
+
+	// Cria conexao
+	if (connect(sock, (struct sockaddr *)(&addrStorage), sizeof(addrStorage)) != 0)
+		comLogErrorAndDie("Failure as creating connection socket [3]");
+
+	return sock;
+}
+
+bool netSend(const int socket, const char *buffer, const unsigned bytesToSend, struct timeval *timeout) {
+
+    printf("\nnetSend: '%s'", buffer);
+
+	ssize_t acc = 0;
+	while (true) {
+		
+		ssize_t sentBytes = send(socket, buffer + acc, bytesToSend - acc, 0/* MSG_DONTWAIT */);
+		if (sentBytes == -1)
+			return false;
+		
+		if (sentBytes == 0)
+			break;
+
+		acc += sentBytes;
+	}
+
+	return acc >= bytesToSend;
+}
+
+ssize_t netRecv(const int socket, char *buffer, struct timeval *timeout) {
+
+	size_t acc = 0;
+
+	while (true) {
+		
+		ssize_t answer = 0;
+		const bool isThereAnyData = !netIsActionAvailable(socket, FD_ACTION_RD, timeout);
+        if (!isThereAnyData)
+            break;
+
+		answer = recv(socket, buffer + acc, BUF_SIZE - acc, MSG_DONTWAIT);
+		if (answer == 0) // Transmission is over
+			break;
+
+		if (answer == -1) // Something wrong is not right
+			return (errno == EAGAIN || errno == EWOULDBLOCK) ? acc : -1;
+	}
+
+	return acc;
+}
+
+bool netIsActionAvailable(int socket, const FdActionEnum action, struct timeval *timeout) {
+
+	if (!socket || !action)
+		comLogErrorAndDie("Invalid arguments for action availability check");
+
+	while (true) {
+
+		fd_set readFds;
+		FD_ZERO(&readFds);
+
+		fd_set writeFds;
+		FD_ZERO(&writeFds);
+
+		if (action == FD_ACTION_RD)
+			FD_SET(socket, &readFds);
+		else if (action == FD_ACTION_WT)
+			FD_SET(socket, &writeFds);
+		else
+			comLogErrorAndDie("Invalid action type for availability check");
+
+		int result = select(socket + 1, &readFds, &writeFds, NULL, timeout);
+		if (result == 0) // Timeout
+			return false;
+		
+		if (result == -1) {
+			if (errno != EINTR) // Erro: Interrupted System Call | TODO: Pq esse erro eh ignorado?
+				comLogErrorAndDie("Failure as running availability check");
+			continue;
+		}
+		
+		if (result != 1
+			|| (action == FD_ACTION_RD && FD_ISSET(socket, &readFds) == 0)
+			|| (action == FD_ACTION_WT && FD_ISSET(socket, &writeFds) == 0)
+		)
+			comLogErrorAndDie("Availability check: Something wrong isn't right... D:");
+		
+		return true;
+	}
+}
+
 bool netSetSocketAddressString(int socket, char *addrStr) {
 
 	struct sockaddr_storage storage;
@@ -196,6 +333,14 @@ bool netSetSocketAddressString(int socket, char *addrStr) {
 		return false;
 
 	return true;
+}
+
+int netGetIpType(const char *ipTypeStr) {
+    if (strcmp(ipTypeStr, "v4") == 0)
+        return AF_INET;
+    if (strcmp(ipTypeStr, "v6") == 0)
+        return AF_INET6;
+    return -1;
 }
 
 /**
