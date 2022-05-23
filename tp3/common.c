@@ -19,15 +19,12 @@ const char* NET_END_SEQ = "#_#";
 const char* SENSOR_IDS[4] = { "01", "02", "03", "04" };
 const char* EQUIP_IDS[4] = { "01", "02", "03", "04" };
 
-/**
- * TODO: 2022-05-20 - Do we really need this?
- */
 const char* CMD_NAME[CMD_COUNT] = { "add sensor", "remove sensor", "list sensors", "read", "kill" };
 const char* CMD_PATTERN[CMD_COUNT] = {
-    "^add sensor ([0-9] ){1,4}in [0-9]$",
-    "^remove sensor ([0-9] ){1,4}in [0-9]$",
-    "^list sensors in [0-9]$",
-    "^read ([0-9] ){1,4}in [0-9]$",
+    "^add sensor ([0-9]{2} ){1,4}in [0-9]{2}$",
+    "^remove sensor ([0-9]{2} ){1,4}in [0-9]{2}$",
+    "^list sensors in [0-9]{2}$",
+    "^read ([0-9]{2} ){1,4}in [0-9]{2}$",
     "^kill$"
 };
 
@@ -140,20 +137,18 @@ Command getCommand(const char* input) {
         return cmd;
 
     // Determine sensors
-    for (int i = 0; i < SENSOR_COUNT; i++)
+    for (int i = 0; i < SENSOR_COUNT; i++) {
         cmd.sensors[i] = false;
+	}
 
-	int minValidSensor = 0;
-	int maxValidSensor = SENSOR_COUNT - 1;
     int firstSensorIdx = cmd.code == CMD_CODE_READ ? 1 : 2;
-
     for (int i = firstSensorIdx; i < inputArgsC - 2; i++) {
         
 		// Validate sensor
 		int sensorCode = atoi(inputArgs[i]) - 1;
-		int isValid = sensorCode >= minValidSensor && sensorCode < maxValidSensor;
+		int isValid = sensorCode >= 0 && sensorCode < SENSOR_COUNT;
 		if (!isValid) {
-			cmd.error == ERR_SENSOR_INVALID;
+			cmd.error = ERR_SENSOR_INVALID;
 			return cmd;
 		}
 

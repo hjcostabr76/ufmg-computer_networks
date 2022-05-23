@@ -21,11 +21,11 @@ bool servValidateInput(int argc, char **argv);
 void servExplainAndDie(char **argv);
 
 void servReceiveMsg(const int servSocket, int cliSocket, char buffer[BUF_SIZE]);
-void servAddSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
+void servAddSensor(Command* cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
 void servListSensors(Command cmd, const Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
 void servReadSensor(Command cmd, const Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
 void servRemoveSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
-void servExecuteCommand(Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
+void servExecuteCommand(Command* cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
 
 void handleError(const ErrCodeEnum error, char* input, char* answer, bool* mustFinish);
 int servGetSensorsCount(const Equipment equipments[EQUIP_COUNT]);
@@ -44,7 +44,7 @@ int main(int argc, char **argv) {
         servExplainAndDie(argv);
 
     // Create socket
-    comDebugStep("Creating server socket...\n");
+    comDebugStep("Creating server socket...");
     const int port = atoi(argv[2]);
     int servSocket = netListen(port, TIMEOUT_CONN_SECS, MAX_CONNECTIONS);
 
@@ -56,11 +56,11 @@ int main(int argc, char **argv) {
         char boundAddr[200];
         memset(dbgTxt, 0, dbgTxtLength);
         if (!netSetSocketAddressString(servSocket, boundAddr)) {
-            sprintf(dbgTxt, "\nFailure as trying to exhibit bound address...\n");
+            sprintf(dbgTxt, "Failure as trying to exhibit bound address...");
             comLogErrorAndDie(dbgTxt);
         }
 
-        sprintf(dbgTxt, "\nAll set! Server is bound to %s:%d\nWaiting for connections...\n", boundAddr, port);
+        sprintf(dbgTxt, "All set! Server is bound to %s:%d\nWaiting for connections...", boundAddr, port);
         comDebugStep(dbgTxt);
     }
 
@@ -82,24 +82,26 @@ int main(int argc, char **argv) {
         // Parse command
         char answer[BUF_SIZE];
         memset(answer, 0, BUF_SIZE);
-        const Command cmd = getCommand(input);
+        Command cmd = getCommand(input);
         bool shouldSendResponse = true;
         
         // Execute command
         if (!cmd.error) {
+            
+            servExecuteCommand(&cmd, equipments, answer);
+            
             if (DEBUG_ENABLE) {
                 memset(dbgTxt, 0, dbgTxtLength);
-                sprintf(dbgTxt, "Command detected: [%d] '%s'", cmd.code, CMD_NAME[cmd.code]);
+                sprintf(dbgTxt, "Command detected: [%d] '%s'\nTotal sensors: %d", cmd.code, CMD_NAME[cmd.code], servGetSensorsCount(equipments));
                 comDebugStep(dbgTxt);
             }
-            servExecuteCommand(cmd, equipments, answer);
         }
         
         // Handle error
         if (cmd.error) {
             handleError(cmd.error, input, answer, &shouldSendResponse);
             memset(dbgTxt, 0, dbgTxtLength);
-            sprintf(dbgTxt, "Error!\n\t'%s'", answer);
+            sprintf(dbgTxt, "Error (%d)!\n\t'%s'", cmd.error, answer);
             comDebugStep(dbgTxt);
         }
 
@@ -164,7 +166,7 @@ void servExplainAndDie(char **argv) {
 
 void servReceiveMsg(const int servSocket, const int cliSocket, char buffer[BUF_SIZE]) {
     
-    comDebugStep("Waiting for command...\n");
+    comDebugStep("Waiting for command...");
     memset(buffer, 0, BUF_SIZE);
     
     size_t receivedBytes = netRecv(cliSocket, buffer, TIMEOUT_TRANSFER_SECS);
@@ -182,15 +184,15 @@ void handleError(const ErrCodeEnum error, char* input, char* answer, bool* shoul
     switch (error) {
         case ERR_EQUIP_INVALID:
             *shouldSendResponse = true;
-            sprintf(answer, "invalid equipment");
+            strcpy(answer, "invalid equipment");
             break;
         case ERR_SENSOR_INVALID:
             *shouldSendResponse = true;
-            sprintf(answer, "invalid sensor");
+            strcpy(answer, "invalid sensor");
             break;
         case ERR_SENSOR_LIMIT:
             *shouldSendResponse = true;
-            sprintf(answer, "limit exceeded");
+            strcpy(answer, "limit exceeded");
             break;
         case ERR_CMD_INVALID:
         case ERR_SENSOR_REPEATED:
@@ -201,16 +203,16 @@ void handleError(const ErrCodeEnum error, char* input, char* answer, bool* shoul
     }
 }
 
-bool servExecuteCommand(Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]) {
-    switch (cmd.code) {
+void servExecuteCommand(Command* cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]) {
+    switch (cmd->code) {
         case CMD_CODE_ADD:
             return servAddSensor(cmd, allEquipments, answer);
         case CMD_CODE_LIST:
-            return servListSensors(cmd, allEquipments, answer);
+            return servListSensors(*cmd, allEquipments, answer);
         case CMD_CODE_READ:
-            return servReadSensor(cmd, allEquipments, answer);
+            return servReadSensor(*cmd, allEquipments, answer);
         case CMD_CODE_RM:
-            return servRemoveSensor(cmd, allEquipments, answer);
+            return servRemoveSensor(*cmd, allEquipments, answer);
         case CMD_CODE_KILL:
         default:
             strcpy(answer, CMD_NAME[CMD_CODE_KILL]);
@@ -218,10 +220,10 @@ bool servExecuteCommand(Command cmd, Equipment allEquipments[EQUIP_COUNT], char 
     }
 }
 
-void servAddSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char* answer) {
+void servAddSensor(Command* cmd, Equipment allEquipments[EQUIP_COUNT], char* answer) {
 
     // Parse command
-    Equipment* equip = &allEquipments[cmd.equipCode];
+    Equipment* equip = &allEquipments[cmd->equipCode];
 
     int addedSensors = 0;
     bool hasRepeated = false;
@@ -232,7 +234,7 @@ void servAddSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char* answ
 
     for (int i = 0; i < SENSOR_COUNT; i++) {
         
-        if (!cmd.sensors[i])
+        if (!cmd->sensors[i])
             continue;
 
         // Compute this adding try
@@ -244,7 +246,7 @@ void servAddSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char* answ
 
         addedSensors++;
         if (currentCount + addedSensors > MAX_SENSORS) {
-            cmd.error = ERR_SENSOR_LIMIT;
+            cmd->error = ERR_SENSOR_LIMIT;
             return;
         }
 
@@ -273,7 +275,7 @@ void servAddSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char* answ
                 strcat(answer, " ");
             }
         }
-        strcat(answer, "already exists in");
+        strcat(answer, "already exists in ");
         strcat(answer, EQUIP_IDS[equip->code]);
     }
 }
