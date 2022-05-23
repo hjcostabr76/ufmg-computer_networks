@@ -21,12 +21,13 @@ bool servValidateInput(int argc, char **argv);
 void servExplainAndDie(char **argv);
 
 void servReceiveMsg(const int servSocket, int cliSocket, char buffer[BUF_SIZE]);
-void servAddSensor(const Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
-void servListSensors(const Command cmd, const Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
-void servReadSensor(const Command cmd, const Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
-void servRemoveSensor(const Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
-void servExecuteCommand(const Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
+void servAddSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
+void servListSensors(Command cmd, const Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
+void servReadSensor(Command cmd, const Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
+void servRemoveSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
+void servExecuteCommand(Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]);
 
+void handleError(const ErrCodeEnum error, char* input, char* answer, bool* mustFinish);
 int servGetSensorsCount(const Equipment equipments[EQUIP_COUNT]);
 
 /**
@@ -47,7 +48,7 @@ int main(int argc, char **argv) {
     const int port = atoi(argv[2]);
     int servSocket = netListen(port, TIMEOUT_CONN_SECS, MAX_CONNECTIONS);
 
-    const int dbgTxtLength = 500;
+    const int dbgTxtLength = BUF_SIZE;
     char dbgTxt[dbgTxtLength];
     
     if (DEBUG_ENABLE) {
@@ -79,33 +80,41 @@ int main(int argc, char **argv) {
         servReceiveMsg(servSocket, cliSocket, input);
 
         // Parse command
-        const Command cmd = getCommand(input);
-        if (!cmd.isValid) {
-            memset(dbgTxt, 0, dbgTxtLength);
-            sprintf(dbgTxt, "\nInvalid command received: '%s'", input);
-            comDebugStep(dbgTxt);
-            break;
-        }
-
-        if (DEBUG_ENABLE) {
-            memset(dbgTxt, 0, dbgTxtLength);
-            sprintf(dbgTxt, "Command detected: [%d] '%s'", cmd.code, CMD_NAME[cmd.code]);
-            comDebugStep(dbgTxt);
-        }
-
-        // Run command
         char answer[BUF_SIZE];
-        servExecuteCommand(cmd, equipments, answer);
+        memset(answer, 0, BUF_SIZE);
+        const Command cmd = getCommand(input);
+        bool shouldSendResponse = true;
+        
+        // Execute command
+        if (!cmd.error) {
+            if (DEBUG_ENABLE) {
+                memset(dbgTxt, 0, dbgTxtLength);
+                sprintf(dbgTxt, "Command detected: [%d] '%s'", cmd.code, CMD_NAME[cmd.code]);
+                comDebugStep(dbgTxt);
+            }
+            servExecuteCommand(cmd, equipments, answer);
+        }
+        
+        // Handle error
+        if (cmd.error) {
+            handleError(cmd.error, input, answer, &shouldSendResponse);
+            memset(dbgTxt, 0, dbgTxtLength);
+            sprintf(dbgTxt, "Error!\n\t'%s'", answer);
+            comDebugStep(dbgTxt);
+        }
 
         // Send response
-        comDebugStep("Sending response...\n");
-        const bool isSuccess = netSend(cliSocket, answer);
-        if (!isSuccess)
-            comLogErrorAndDie("Sending command failure");
-        comDebugStep("Response sent!\n");
+        if (shouldSendResponse) {
+            comDebugStep("Sending response..");
+            const bool isSuccess = netSend(cliSocket, answer);
+            if (!isSuccess)
+                comLogErrorAndDie("Sending command failure");
+            comDebugStep("Response sent!");
+        }
 
         // End connection
-        if (cmd.code == CMD_CODE_KILL)
+        bool mustFinish = !shouldSendResponse || cmd.code == CMD_CODE_KILL;
+        if (mustFinish)
             break;
     }
 
@@ -169,20 +178,39 @@ void servReceiveMsg(const int servSocket, const int cliSocket, char buffer[BUF_S
     }
 }
 
-void servExecuteCommand(Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]) {
+void handleError(const ErrCodeEnum error, char* input, char* answer, bool* shouldSendResponse) {
+    switch (error) {
+        case ERR_EQUIP_INVALID:
+            *shouldSendResponse = true;
+            sprintf(answer, "invalid equipment");
+            break;
+        case ERR_SENSOR_INVALID:
+            *shouldSendResponse = true;
+            sprintf(answer, "invalid sensor");
+            break;
+        case ERR_SENSOR_LIMIT:
+            *shouldSendResponse = true;
+            sprintf(answer, "limit exceeded");
+            break;
+        case ERR_CMD_INVALID:
+        case ERR_SENSOR_REPEATED:
+        default:
+            *shouldSendResponse = false;
+            sprintf(answer, "invalid command received: '%s'", input);
+            break;
+    }
+}
+
+bool servExecuteCommand(Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]) {
     switch (cmd.code) {
         case CMD_CODE_ADD:
-            servAddSensor(cmd, allEquipments, answer);
-            break;
+            return servAddSensor(cmd, allEquipments, answer);
         case CMD_CODE_LIST:
-            servListSensors(cmd, allEquipments, answer);
-            break;
+            return servListSensors(cmd, allEquipments, answer);
         case CMD_CODE_READ:
-            servReadSensor(cmd, allEquipments, answer);
-            break;
+            return servReadSensor(cmd, allEquipments, answer);
         case CMD_CODE_RM:
-            servRemoveSensor(cmd, allEquipments, answer);
-            break;
+            return servRemoveSensor(cmd, allEquipments, answer);
         case CMD_CODE_KILL:
         default:
             strcpy(answer, CMD_NAME[CMD_CODE_KILL]);
@@ -190,21 +218,17 @@ void servExecuteCommand(Command cmd, Equipment allEquipments[EQUIP_COUNT], char 
     }
 }
 
-void servAddSensor(const Command cmd, Equipment allEquipments[EQUIP_COUNT], char* answer) {
+void servAddSensor(Command cmd, Equipment allEquipments[EQUIP_COUNT], char* answer) {
 
-    // Prepare answer string
-    int tempLength = 100;
-    char tempMsg[tempLength];
-    memset(tempMsg, 0, tempLength);
-    
     // Parse command
     Equipment* equip = &allEquipments[cmd.equipCode];
 
-    bool hasAdded = false;
-    bool addedList[SENSOR_COUNT] = { false };
-
+    int addedSensors = 0;
     bool hasRepeated = false;
+    bool addedList[SENSOR_COUNT] = { false };
     bool repeatedList[SENSOR_COUNT] = { false };
+
+    int currentCount = servGetSensorsCount(allEquipments);
 
     for (int i = 0; i < SENSOR_COUNT; i++) {
         
@@ -215,62 +239,50 @@ void servAddSensor(const Command cmd, Equipment allEquipments[EQUIP_COUNT], char
         if (equip->sensors[i]) {
             hasRepeated = true;
             repeatedList[i] = true;
-
-        } else {
-            hasAdded = true;
-            addedList[i] = true;
+            continue;
         }
+
+        addedSensors++;
+        if (currentCount + addedSensors > MAX_SENSORS) {
+            cmd.error = ERR_SENSOR_LIMIT;
+            return;
+        }
+
+        addedList[i] = true;
     }
 
     // Build answer message
     memset(answer, 0, BUF_SIZE);
     strcpy(answer, "sensor ");
 
-    if (hasAdded) {
+    if (addedSensors) {
         for (int i = 0; i < SENSOR_COUNT; i++) {
-
-            // Verify limit exceeding
-            if (servGetSensorsCount(allEquipments) >= MAX_SENSORS) {
-                memset(answer, 0, BUF_SIZE);
-                strcpy(answer, "limit exceeded");
-                return;
-            }
-
-            // Compute new sensor added
             if (addedList[i]) {
                 equip->sensors[i] = true;
-                memset(tempMsg, 0, tempLength);
-                sprintf(tempMsg, "%s ", SENSOR_IDS[i]);
-                strcat(answer, tempMsg);
+                strcat(answer, SENSOR_IDS[i]);
+                strcat(answer, " ");
             }
         }
-
         strcat(answer, "added ");
     }
 
     if (hasRepeated) {
         for (int i = 0; i < SENSOR_COUNT; i++) {
-
-            // Compute repeated sensor
             if (repeatedList[i]) {
-                memset(tempMsg, 0, tempLength);
-                sprintf(tempMsg, "%s ", SENSOR_IDS[i]);
-                strcat(answer, tempMsg);
+                strcat(answer, SENSOR_IDS[i]);
+                strcat(answer, " ");
             }
         }
-
-        memset(tempMsg, 0, tempLength);
-        sprintf(tempMsg, "already exists in %s", EQUIP_IDS[equip->code]);
-        strcat(answer, tempMsg);
+        strcat(answer, "already exists in");
+        strcat(answer, EQUIP_IDS[equip->code]);
     }
 }
 
-void servRemoveSensor(const Command cmd, Equipment allEquipments[EQUIP_COUNT], char* answer) {
+void servRemoveSensor(const Command cmd, Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]) {
     
     bool hasRemoved = false;
-    bool removedList[SENSOR_COUNT] = { false };
-
     bool hasMissed = false;
+    bool removedList[SENSOR_COUNT] = { false };
     bool missedList[SENSOR_COUNT] = { false };
 
     // Parse command
@@ -322,12 +334,16 @@ void servReadSensor(const Command cmd, const Equipment allEquipments[EQUIP_COUNT
     srand(time(NULL));
 
     // Prepare answer string
-    int tempLength = 100;
+    int tempLength = 10;
     char tempMsg[tempLength];
+    memset(answer, 0, BUF_SIZE);
 
-    int notInstalledSensors[SENSOR_COUNT];
+    // Parse requested values
+    bool hasValidSensors = false;
+    bool hasInvalidSensors = false;
+    int notInstalledSensors[SENSOR_COUNT] = { false };
+
     Equipment equip = allEquipments[cmd.equipCode];
-
     for (int i = 0; i < SENSOR_COUNT; i++) {
         
         // Check applicability
@@ -335,11 +351,13 @@ void servReadSensor(const Command cmd, const Equipment allEquipments[EQUIP_COUNT
             continue;
 
         if (!equip.sensors[i]) {
+            hasInvalidSensors = true;
             notInstalledSensors[i] = true;
             continue;
         }
 
-        // Compute reading value
+        // Compute reading values
+        hasValidSensors = true;
         float reading = rand() % 100;
         notInstalledSensors[i] = false;
         
@@ -349,25 +367,19 @@ void servReadSensor(const Command cmd, const Equipment allEquipments[EQUIP_COUNT
     }
 
     // Handle not installed requested values
-    bool aux = false;
-    for (int i = 0; i < SENSOR_COUNT; i++) {
-        
-        if (!notInstalledSensors[i])
-            continue;
+    if (hasInvalidSensors) {
 
-        memset(tempMsg, 0, tempLength);
-        if (!aux) {
-            aux = true;
-            strcpy(tempMsg, "and ");
+        if (hasValidSensors)
+            strcat(answer, "and ");
+
+        for (int i = 0; i < SENSOR_COUNT; i++) {
+            if (notInstalledSensors[i]) {
+                strcat(answer, SENSOR_IDS[i]);
+                strcat(answer, " ");
+            }
         }
-
-        strcat(tempMsg, SENSOR_IDS[i]);
-        strcat(tempMsg, " ");
-        strcat(answer, tempMsg);
-    }
-
-    if (aux)
         strcat(answer, "not installed");
+    }
 }
 
 void servListSensors(const Command cmd, const Equipment allEquipments[EQUIP_COUNT], char answer[BUF_SIZE]) {

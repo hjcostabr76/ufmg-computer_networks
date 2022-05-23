@@ -40,6 +40,7 @@ extern const char* CMD_PATTERN[CMD_COUNT];
 
 typedef enum { CMD_CODE_ADD, CMD_CODE_RM, CMD_CODE_LIST, CMD_CODE_READ, CMD_CODE_KILL } CmdCodeEnum;
 typedef enum { EQUIP_01, EQUIP_02, EQUIP_03, EQUIP_04 } EquipCodeEnum;
+typedef enum { ERR_CMD_INVALID = 1, ERR_EQUIP_INVALID, ERR_SENSOR_INVALID, ERR_SENSOR_REPEATED, ERR_SENSOR_LIMIT } ErrCodeEnum;
 
 /**
  * ------------------------------------------------
@@ -48,7 +49,7 @@ typedef enum { EQUIP_01, EQUIP_02, EQUIP_03, EQUIP_04 } EquipCodeEnum;
  */
 
 typedef struct {
-    bool isValid;
+    ErrCodeEnum error;
     CmdCodeEnum code;
     int equipCode;
     bool sensors[SENSOR_COUNT];

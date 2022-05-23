@@ -24,10 +24,10 @@ const char* EQUIP_IDS[4] = { "01", "02", "03", "04" };
  */
 const char* CMD_NAME[CMD_COUNT] = { "add sensor", "remove sensor", "list sensors", "read", "kill" };
 const char* CMD_PATTERN[CMD_COUNT] = {
-    "^add sensor (0[1234] ){1,4}in 0[1234]$",
-    "^remove sensor (0[1234] ){1,4}in 0[1234]$",
-    "^list sensors in 0[1234]$",
-    "^read (0[1234] ){1,4}in 0[1234]$",
+    "^add sensor ([0-9] ){1,4}in [0-9]$",
+    "^remove sensor ([0-9] ){1,4}in [0-9]$",
+    "^list sensors in [0-9]$",
+    "^read ([0-9] ){1,4}in [0-9]$",
     "^kill$"
 };
 
@@ -91,7 +91,7 @@ Equipment getEmptyEquipment(const EquipCodeEnum code) {
 
 Command getGenericCommand(void) {
     Command command;
-    command.isValid = false;
+    command.error = 0;
     command.equipCode = getEquipmentCodeById("");
     for (int i = 0; i < SENSOR_COUNT; i++)
         command.sensors[i] = false;
@@ -109,19 +109,20 @@ Command getCommand(const char* input) {
     Command cmd = getGenericCommand();
     
     // Identify command type
+	bool isMatch = false;
     for (int i = 0; i < CMD_COUNT; i++) {
-
         char regexMsg[100];
-        cmd.isValid = strRegexMatch(CMD_PATTERN[i], input, regexMsg);
-        if (!cmd.isValid)
-            continue;
-
-		cmd.isValid = true;
-		cmd.code = i;
-        break;
+        isMatch = strRegexMatch(CMD_PATTERN[i], input, regexMsg);
+        if (isMatch) {
+			cmd.code = i;
+			break;
+		}
 	}
 
-	if (!cmd.isValid || cmd.code == CMD_CODE_KILL)
+	if (!isMatch)
+		cmd.error = ERR_CMD_INVALID;
+
+	if (!isMatch || cmd.code == CMD_CODE_KILL)
         return cmd;
 
     // Determine equipment
@@ -130,22 +131,38 @@ Command getCommand(const char* input) {
 
     int inputArgsC;
     char** inputArgs = strSplit(inputCopy, " ", 8, 100, &inputArgsC);
-    cmd.equipCode = getEquipmentCodeById(inputArgs[inputArgsC - 1]);
 
-    if (cmd.code == CMD_CODE_LIST)
+    cmd.equipCode = getEquipmentCodeById(inputArgs[inputArgsC - 1]);
+	if (cmd.equipCode == -1)
+		cmd.error = ERR_EQUIP_INVALID;
+
+    if (cmd.error || cmd.code == CMD_CODE_LIST)
         return cmd;
 
     // Determine sensors
     for (int i = 0; i < SENSOR_COUNT; i++)
         cmd.sensors[i] = false;
 
+	int minValidSensor = 0;
+	int maxValidSensor = SENSOR_COUNT - 1;
     int firstSensorIdx = cmd.code == CMD_CODE_READ ? 1 : 2;
+
     for (int i = firstSensorIdx; i < inputArgsC - 2; i++) {
-        int sensorCode = atoi(inputArgs[i]) - 1;
+        
+		// Validate sensor
+		int sensorCode = atoi(inputArgs[i]) - 1;
+		int isValid = sensorCode >= minValidSensor && sensorCode < maxValidSensor;
+		if (!isValid) {
+			cmd.error == ERR_SENSOR_INVALID;
+			return cmd;
+		}
+
         if (cmd.sensors[sensorCode]) {
-            cmd.isValid = false;
-            break;
+            cmd.error = ERR_SENSOR_REPEATED;
+            return cmd;
         }
+
+		// It's fine
         cmd.sensors[sensorCode] = true;
     }
     
@@ -275,21 +292,21 @@ bool netSend(const int socket, const char *msg) {
 	while (true) {
 
 		// Check if is there any trouble before sending anything
-		int sockError = 0;
-		socklen_t sockErrLength = sizeof(sockError);
-		int errResult = getsockopt(socket, SOL_SOCKET, SO_ERROR, &sockError, &sockErrLength);
-		if (errResult != 0)
-			comLogErrorAndDie("Failure as trying to get socket error information [send]");
+		// int sockError = 0;
+		// socklen_t sockErrLength = sizeof(sockError);
+		// int errResult = getsockopt(socket, SOL_SOCKET, SO_ERROR, &sockError, &sockErrLength);
+		// if (errResult != 0)
+		// 	comLogErrorAndDie("Failure as trying to get socket error information [send]");
 
-		if (sockError != 0) {
-			char aux[100];
-			sprintf(aux, "Socket error detected (send): %d", sockError);
-			comDebugStep(aux);
-			return false;
-		}
+		// if (sockError != 0) {
+		// 	char aux[100];
+		// 	sprintf(aux, "Socket error detected (send): %d", sockError);
+		// 	comDebugStep(aux);
+		// 	return false;
+		// }
 
 		// Try to send stuff
-		ssize_t sentBytes = send(socket, buffer + acc, bytesToSend - acc, 0/* MSG_DONTWAIT */);
+		ssize_t sentBytes = send(socket, buffer + acc, bytesToSend - acc, MSG_DONTWAIT);
 		if (sentBytes == -1)
 			return false;
 		
