@@ -2,7 +2,6 @@
 
 #include <stdbool.h>
 #include <sys/select.h>
-
 #include <stdio.h>
 
 /**
@@ -23,14 +22,12 @@
 #define SENSOR_COUNT 4
 #define MAX_SENSORS 15
 
-/**
- * TODO: 2022-05-20 - Check if we need it all
- */
-
-#define ASCII_NUMBER_FIRST 48
-#define ASCII_NUMBER_LAST 57
-#define ASCII_LC_LETTER_LAST 122
-#define ASCII_LC_LETTER_FIRST 97
+#define ASCII_NUM_FIRST 48
+#define ASCII_NUM_LAST 57
+#define ASCII_CHAR_LC_FIRST 97
+#define ASCII_CHAR_LC_LAST 122
+#define ASCII_CHAR_UC_FIRST 65
+#define ASCII_CHAR_UC_LAST 90
 
 extern const char* EQUIP_IDS[4];
 extern const char* SENSOR_IDS[4];
@@ -96,6 +93,8 @@ bool strReadFromStdIn(char *buffer, size_t buffLength);
 bool strRegexMatch(const char* pattern, const char* str, char errorMsg[100]);
 bool strEndsWith(const char *target, const char *suffix);
 bool strStartsWith(const char *target, const char *prefix);
-bool strValidateNumeric(const char *string, const int strLength);
+bool strIsNumeric(const char *string);
+bool strIsAlphaNumericChar(const char c);
+char* strTrim(const char *string);
 char** strSplit(char* source, const char delimiter[1], const int maxTokens, const int maxLength, int *tokensCount);
 void strGetSubstring(const char *src, char *dst, size_t start, size_t end);

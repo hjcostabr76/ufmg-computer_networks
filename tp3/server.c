@@ -78,6 +78,7 @@ int main(int argc, char **argv) {
         char input[BUF_SIZE];
         memset(input, 0, BUF_SIZE);
         servReceiveMsg(servSocket, cliSocket, input);
+        printf("%s\n", input);
 
         // Parse command
         char answer[BUF_SIZE];
@@ -149,7 +150,7 @@ bool servValidateInput(int argc, char **argv) {
 
     // Validate port
 	const char *portStr = argv[1];
-	if (!strValidateNumeric(portStr, strlen(portStr))) {
+	if (!strIsNumeric(portStr)) {
 		comDebugStep("Invalid Port!\n");
 		return false;
 	}

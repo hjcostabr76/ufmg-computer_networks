@@ -14,13 +14,8 @@
 
 bool cliValidateInput(int argc, char **argv);
 void cliExplainAndDie(char **argv);
+char* cliGetCleanInput(char* input);
 void cliSendCommand(const int socket, const char* input, char *answer);
-
-/**
- * ------------------------------------------------
- * == MAIN ========================================
- * ------------------------------------------------
- */
 
 int main(int argc, char **argv) {
 
@@ -42,6 +37,7 @@ int main(int argc, char **argv) {
 	int sock = netConnect(atoi(portStr), addrStr, TIMEOUT_CONN_SECS);
 
 	if (DEBUG_ENABLE) {
+		memset(dbgTxt, 0, dbgTxtLength);
 		sprintf(dbgTxt, "Connected to %s:%s", addrStr, portStr);
 		comDebugStep(dbgTxt);
 	}
@@ -49,9 +45,16 @@ int main(int argc, char **argv) {
 	do {
 
 		// Wait for command
-		char input[BUF_SIZE];
-		if (!strReadFromStdIn(input, BUF_SIZE))
+		char aux[BUF_SIZE];
+		if (!strReadFromStdIn(aux, BUF_SIZE))
             comLogErrorAndDie("Failure as trying to read user input");
+
+		char* input = cliGetCleanInput(aux);
+		if (strcasecmp(input, aux) != 0) {
+			memset(dbgTxt, 0, dbgTxtLength);
+			sprintf(dbgTxt, "Input had to be cleared:\n\t[before] '%s'\n\t[after] '%s'", aux, input);
+			comDebugStep(dbgTxt);
+		}
 
 		// Send command
 		char answer[BUF_SIZE];
@@ -88,7 +91,7 @@ bool cliValidateInput(int argc, char **argv) {
 
     // Validate port
 	const char *portStr = argv[2];
-	if (!strValidateNumeric(portStr, strlen(portStr))) {
+	if (!strIsNumeric(portStr)) {
 		comDebugStep("Invalid Port!\n");
 		return false;
 	}
@@ -101,6 +104,21 @@ void cliExplainAndDie(char **argv) {
     printf("Usage: %s <server IP> <server port>\n", argv[0]);
 	printf("Example: %s 127.0.0.1 51511\n", argv[0]);
     exit(EXIT_FAILURE);
+}
+
+char* cliGetCleanInput(char* input) {
+	
+	int i = 0;
+	char* cleanInput = (char*)malloc(strlen(input));
+
+	for (int j = 0; j < strlen(input); j++) {
+		char c = input[j];
+		if (strIsAlphaNumericChar(c))
+			cleanInput[i++] = c;
+	}
+	
+	cleanInput[i] = '\0';
+	return cleanInput;
 }
 
 void cliSendCommand(const int socket, const char* input, char *answer) {

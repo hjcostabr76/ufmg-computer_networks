@@ -8,6 +8,7 @@
 #include <string.h>
 #include <regex.h>
 #include <errno.h>
+#include <ctype.h>
 
 /**
  * ------------------------------------------------
@@ -123,11 +124,9 @@ Command getCommand(const char* input) {
         return cmd;
 
     // Determine equipment
-    char inputCopy[100];
-    strcpy(inputCopy, input);
-
     int inputArgsC;
-    char** inputArgs = strSplit(inputCopy, " ", 8, 100, &inputArgsC);
+    char* inputTrimmed = strTrim(input);
+    char** inputArgs = strSplit(inputTrimmed, " ", 8, 100, &inputArgsC);
 
     cmd.equipCode = getEquipmentCodeById(inputArgs[inputArgsC - 1]);
 	if (cmd.equipCode == -1)
@@ -287,18 +286,18 @@ bool netSend(const int socket, const char *msg) {
 	while (true) {
 
 		// Check if is there any trouble before sending anything
-		// int sockError = 0;
-		// socklen_t sockErrLength = sizeof(sockError);
-		// int errResult = getsockopt(socket, SOL_SOCKET, SO_ERROR, &sockError, &sockErrLength);
-		// if (errResult != 0)
-		// 	comLogErrorAndDie("Failure as trying to get socket error information [send]");
+		int sockError = 0;
+		socklen_t sockErrLength = sizeof(sockError);
+		int errResult = getsockopt(socket, SOL_SOCKET, SO_ERROR, &sockError, &sockErrLength);
+		if (errResult != 0)
+			comLogErrorAndDie("Failure as trying to get socket error information [send]");
 
-		// if (sockError != 0) {
-		// 	char aux[100];
-		// 	sprintf(aux, "Socket error detected (send): %d", sockError);
-		// 	comDebugStep(aux);
-		// 	return false;
-		// }
+		if (sockError != 0) {
+			char aux[100];
+			sprintf(aux, "Socket error detected (send): %d", sockError);
+			comDebugStep(aux);
+			return false;
+		}
 
 		// Try to send stuff
 		ssize_t sentBytes = send(socket, buffer + acc, bytesToSend - acc, MSG_DONTWAIT);
@@ -439,12 +438,21 @@ int netGetIpType(const char *ipTypeStr) {
  * ------------------------------------------------
  */
 
-bool strValidateNumeric(const char *string, const int strLength) {
-	for (int i; i < strLength; i++) {
-		if ((int)string[i] < ASCII_NUMBER_FIRST || (int)string[i] > ASCII_NUMBER_LAST)
+bool strIsNumeric(const char *string) {
+	for (int i; i < strlen(string); i++) {
+		if (!isdigit(string[i]))
 			return false;
 	}
 	return true;
+}
+
+bool strIsAlphaNumericChar(const char c) {
+	return (
+		(c >= ASCII_NUM_FIRST && c <= ASCII_NUM_LAST)
+		|| (c >= ASCII_CHAR_LC_FIRST && c <= ASCII_CHAR_LC_LAST)
+		|| (c >= ASCII_CHAR_UC_FIRST && c <= ASCII_CHAR_UC_LAST)
+		|| c == ' '
+	);
 }
 
 bool strReadFromStdIn(char *buffer, size_t buffLength) {
@@ -522,4 +530,18 @@ bool strRegexMatch(const char* pattern, const char* str, char errorMsg[100]) {
     // Free memory allocated to the pattern buffer by regcomp()
     regfree(&regex);
     return isSuccess;
+}
+
+char* strTrim(const char* input) {
+
+	// Left trim
+	char* trimmed = (char *)malloc(strlen(input));
+    while (isspace(*trimmed)) trimmed++;
+    
+	// Right trim
+	char* back = trimmed + strlen(trimmed);
+    while (isspace(*--back));
+    *(back + 1) = '\0';
+
+	return trimmed;
 }
