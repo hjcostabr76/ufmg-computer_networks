@@ -17,6 +17,12 @@ void cliExplainAndDie(char **argv);
 char* cliGetCleanInput(char* input);
 void cliSendCommand(const int socket, const char* input, char *answer);
 
+/**
+ * ------------------------------------------------
+ * == MAIN ========================================
+ * ------------------------------------------------
+ */
+
 int main(int argc, char **argv) {
 
 	const int dbgTxtLength = 500;
