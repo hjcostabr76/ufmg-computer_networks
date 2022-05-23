@@ -10,7 +10,7 @@
  * ------------------------------------------------
  */
 
-#define DEBUG_ENABLE true
+#define DEBUG_ENABLE false
 #define BUF_SIZE 500
 
 #define MAX_CONNECTIONS 1

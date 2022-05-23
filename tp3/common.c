@@ -124,9 +124,11 @@ Command getCommand(const char* input) {
         return cmd;
 
     // Determine equipment
+    char inputCopy[100];
+    strcpy(inputCopy, input);
+
     int inputArgsC;
-    char* inputTrimmed = strTrim(input);
-    char** inputArgs = strSplit(inputTrimmed, " ", 8, 100, &inputArgsC);
+    char** inputArgs = strSplit(inputCopy, " ", 8, 100, &inputArgsC);
 
     cmd.equipCode = getEquipmentCodeById(inputArgs[inputArgsC - 1]);
 	if (cmd.equipCode == -1)
