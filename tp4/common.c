@@ -3,12 +3,15 @@
 // #include <stdio.h>
 #include <stdlib.h>
 // #include <stdbool.h>
-// #include <sys/socket.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 #include <arpa/inet.h>
-// #include <string.h>
+#include <string.h>
 // #include <regex.h>
 #include <errno.h>
-// #include <ctype.h>
+#include <ctype.h>
+#include <netdb.h>
+// #include <netinet/in.h>
 
 /**
  * ------------------------------------------------
@@ -48,10 +51,13 @@ void comLogErrorAndDie(char *msg) {
 
 	if (DEBUG_ENABLE) {
 		if (errno) {
-			strcat(msg, "\nDESC");
-			perror(msg);
+			char *descSuffix = "\n\tWhat: ";
+			char errMsg[strlen(msg) + strlen(descSuffix)];
+			strcpy(errMsg, msg);
+			strcat(errMsg, descSuffix);
+			perror(errMsg);
 		} else
-			printf("\n%s\n", msg);
+			fprintf(stderr, "\n%s\n", msg);
 	}
 
 	exit(EXIT_FAILURE);
@@ -59,7 +65,7 @@ void comLogErrorAndDie(char *msg) {
 
 void comDebugStep(const char *text) {
 	if (DEBUG_ENABLE)
-		printf("%s\n", text);
+		printf("[log] %s\n", text);
 }
 
 /**
@@ -166,79 +172,80 @@ Equipment getEmptyEquipment() {
  * ------------------------------------------------
  */
 
-int netListen(const int port, const int timeoutSecs, const int maxConnections) {
+int netListen(const char *portStr, const int timeoutSecs, const int maxConnections, const int *ipVersion) {
 
 	// Validate params
-	if (!port)
+	if (!strIsNumeric(portStr))
 		comLogErrorAndDie("Invalid listening socket port");
 
-	if (!maxConnections)
-		comLogErrorAndDie("Listening socket must accept at least one connection");
+	if (!maxConnections){
+		comLogErrorAndDie("Listening socket must accept at least one connection");}
+
+	// Load address info
+	struct addrinfo hints;
+	memset(&hints, 0, sizeof hints);
+
+	hints.ai_flags = AI_PASSIVE; // Fill in my IP for me
+	hints.ai_family = ipVersion == NULL ? AF_UNSPEC : (*ipVersion == 4 ? AF_INET : AF_INET6);
+	hints.ai_socktype = SOCK_STREAM;
+
+	struct addrinfo *addrInfo;
+	getaddrinfo(NULL, portStr, &hints, &addrInfo);
 
 	// Create socket
-	const int sock = socket(AF_INET6, SOCK_STREAM, 0);
-    if (sock == -1)
-        comLogErrorAndDie("Failure as creating listening socket [1]");
+	const int sock = socket(addrInfo->ai_family, addrInfo->ai_socktype, addrInfo->ai_protocol);
+    if (sock == -1) {
+        comLogErrorAndDie("Failure as creating listening socket [1]");}
 
-    // Avoid that port used in an execution become deactivated for 02 min after conclustion
-    int enableAddrReuse = 1;
+    // Avoid that port used in an execution become deactivated for 02 min after conclusion
+    const int enableAddrReuse = 1;
     if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &enableAddrReuse, sizeof(int)) != 0) {
         comLogErrorAndDie("Failure as creating listening socket [2]");
 	}
 
-	// Sets linstening timeout
+	// Set listening timeout
 	struct timeval timeout;
     timeout.tv_sec = timeoutSecs;
     timeout.tv_usec = 0;
     if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0)
 		comLogErrorAndDie("Failure as creating listening socket [3]");
 
-	// Enable ipv4 connections in ipv6 socket
-	int no = 0;
-	if (setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (void *)&no, sizeof(no)) != 0)
-		comLogErrorAndDie("Failure as trying to enable ipv4 clients to ipv6 server");
+	// Enable ipv4 connections in ipv6 socket (only if we accept both)
+	if (ipVersion == NULL) {
+		int no = 0;
+		if (setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (void *)&no, sizeof(no)) != 0)
+			comLogErrorAndDie("Failure as trying to enable ipv4 clients to ipv6 server");
+	}
 
 	// Bind socket
-	struct sockaddr_storage storage;
-	memset(&storage, 0, sizeof(storage));
-
-	struct sockaddr_in6 *addr = (struct sockaddr_in6 *)&storage;
-	memset(addr, 0, sizeof(*addr));
-
-	addr->sin6_family = AF_INET6;
-	addr->sin6_addr = in6addr_any; // Set bindings to occur in any host available address
-	addr->sin6_port = htons(port); // Host to network short
-
-	if (bind(sock, (struct sockaddr *)addr, sizeof(*addr)) != 0)
+	if (bind(sock, addrInfo->ai_addr, addrInfo->ai_addrlen) != 0)
 		comLogErrorAndDie("Failure as biding listening socket");
     
 	// Start listening
 	if (listen(sock, maxConnections) != 0)
 		comLogErrorAndDie("Failure as starting to listen");
 	
+	freeaddrinfo(addrInfo); // Free the linked list
 	return sock;
 }
 
-int netConnect(const int port, const char *addrStr, const int timeoutSecs) {
+int netConnect(const char *portStr, const char *addrStr, const int timeoutSecs, const int *ipVersion) {
 
-	// Valida endereco
-	if (!port)
+	// Validate
+	if (!strIsNumeric(portStr))
 		comLogErrorAndDie("invalid connection port");
 
-    // Determina protocolo
-	struct sockaddr_storage addrStorage;
+	// Load address info
+	struct addrinfo hints;
+	memset(&hints, 0, sizeof hints);
+	hints.ai_family = ipVersion == NULL ? AF_UNSPEC : (*ipVersion == 4 ? AF_INET : AF_INET6);
+	hints.ai_socktype = SOCK_STREAM;
 
-    struct in_addr inaddr4; // 32-bit IP address
-	const int isIpv4 = inet_pton(AF_INET, addrStr, &inaddr4);
+	struct addrinfo *addrInfo;
+	getaddrinfo(addrStr, portStr, &hints, &addrInfo);
 
-	struct in6_addr inaddr6; // 128-bit IPv6 address
-	const int isIpv6 = !isIpv4 ? inet_pton(AF_INET6, addrStr, &inaddr6) : 0;
-
-	if (!isIpv4 && !isIpv6)
-		comLogErrorAndDie("Invalid address family to create connection socket");
-
-	// Cria socket
-	int sock = socket(isIpv4 ? AF_INET : AF_INET6, SOCK_STREAM, 0);
+	// Create socket
+	int sock = socket(addrInfo->ai_family, addrInfo->ai_socktype, addrInfo->ai_protocol);
 	if (sock == -1)
 		comLogErrorAndDie("Failure as creating connection socket [1]");
 
@@ -248,26 +255,11 @@ int netConnect(const int port, const char *addrStr, const int timeoutSecs) {
 	if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0)
 		comLogErrorAndDie("Failure as creating connection socket [2]");
 
-	// Trata ipv4
-    if (isIpv4) {
-		struct sockaddr_in *addr4 = (struct sockaddr_in *)&addrStorage;
-        addr4->sin_family = AF_INET;
-        addr4->sin_port = htons(port);
-        addr4->sin_addr = inaddr4;
-
-    // Trata ipv6
-    } else {
-		struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)&addrStorage;
-        addr6->sin6_family = AF_INET6;
-        addr6->sin6_port = htons(port);
-        // addr6->sin6_addr = inaddr6
-        memcpy(&(addr6->sin6_addr), &inaddr6, sizeof(inaddr6));
-    }
-
-	// Cria conexao
-	if (connect(sock, (struct sockaddr *)(&addrStorage), sizeof(addrStorage)) != 0)
+	// Create connection
+	if (connect(sock, addrInfo->ai_addr, addrInfo->ai_addrlen) != 0)
 		comLogErrorAndDie("Failure as creating connection socket [3]");
 
+	freeaddrinfo(addrInfo); // Free the linked list
 	return sock;
 }
 
@@ -331,7 +323,7 @@ ssize_t netRecv(const int cliSocket, char *buffer, const int timeoutSecs) {
     timeout.tv_sec = timeoutSecs;
     timeout.tv_usec = 0;
 
-	size_t acc = 0;
+	ssize_t acc = 0;
 	while (true) {
 		
 		// Wait for some data
@@ -435,13 +427,13 @@ int netGetIpType(const char *ipTypeStr) {
  * ------------------------------------------------
  */
 
-// bool strIsNumeric(const char *string) {
-// 	for (int i; i < strlen(string); i++) {
-// 		if (!isdigit(string[i]))
-// 			return false;
-// 	}
-// 	return true;
-// }
+bool strIsNumeric(const char *string) {
+	for (size_t i = 0; i < strlen(string); i++) {
+		if (!isdigit(string[i]))
+			return false;
+	}
+	return true;
+}
 
 // bool strIsAlphaNumericChar(const char c) {
 // 	return (
@@ -468,13 +460,13 @@ int netGetIpType(const char *ipTypeStr) {
 //    return strncmp(target, prefix, strlen(prefix)) == 0;
 // }
 
-// bool strEndsWith(const char *target, const char *suffix) {
-// 	size_t targetLength = strlen(target);
-//     size_t suffixLength = strlen(suffix);
-// 	if (suffixLength > targetLength)
-//         return false;
-//     return strncmp(target + targetLength - suffixLength, suffix, suffixLength) == 0;
-// }
+bool strEndsWith(const char *target, const char *suffix) {
+	size_t targetLength = strlen(target);
+    size_t suffixLength = strlen(suffix);
+	if (suffixLength > targetLength)
+        return false;
+    return strncmp(target + targetLength - suffixLength, suffix, suffixLength) == 0;
+}
 
 // void strGetSubstring(const char *src, char *dst, size_t start, size_t end) {
 //     strncpy(dst, src + start, end - start);

@@ -12,6 +12,7 @@
 
 #define DEBUG_ENABLE true
 #define BUF_SIZE 500
+#define PORT_DEFAULT 51511
 
 #define MAX_CONNECTIONS 15
 #define TIMEOUT_CONN_SECS 15
@@ -73,8 +74,8 @@ Equipment getEmptyEquipment(void);
 
 /** -- NETWORK ---------- */
 
-int netListen(const int port, const int timeoutSecs, const int maxConnections);
-int netConnect(const int port, const char *addrStr, const int timeoutSecs);
+int netListen(const char *portStr, const int timeoutSecs, const int maxConnections, const int *ipVersion);
+int netConnect(const char *portStr, const char *addrStr, const int timeoutSecs, const int *ipVersion);
 bool netSend(const int socket, const char *msg);
 int netAccept(const int servSocket);
 ssize_t netRecv(const int cliSocket, char *buffer, const int timeoutSecs);
@@ -86,9 +87,9 @@ bool netSetSocketAddressString(int socket, char *boundAddr);
 // int comValidateLCaseString(const char *string, const int strLength);
 // bool strReadFromStdIn(char *buffer, size_t buffLength);
 // bool strRegexMatch(const char* pattern, const char* str, char errorMsg[100]);
-// bool strEndsWith(const char *target, const char *suffix);
+bool strEndsWith(const char *target, const char *suffix);
 // bool strStartsWith(const char *target, const char *prefix);
-// bool strIsNumeric(const char *string);
+bool strIsNumeric(const char *string);
 // bool strIsAlphaNumericChar(const char c);
 // char* strTrim(const char *string);
 // char** strSplit(char* source, const char delimiter[1], const int maxTokens, const int maxLength, int *tokensCount);

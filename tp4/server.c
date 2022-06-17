@@ -2,13 +2,13 @@
 
 // #include <stdio.h>
 #include <stdlib.h>
-// #include <pthread.h>
+#include <pthread.h>
 // #include <sys/socket.h>
-// #include <inttypes.h>
+#include <inttypes.h>
 #include <arpa/inet.h>
 // #include <sys/time.h>
-// #include <string.h>
-// #include <unistd.h>
+#include <string.h>
+#include <unistd.h>
 // #include <errno.h>
 
 struct ConnThreadData {
@@ -19,7 +19,6 @@ struct ConnThreadData {
 struct ClientData {
     int socket;
     struct sockaddr_storage address;
-    struct timeval timeout;
 };
 
 
@@ -50,8 +49,9 @@ int main(int argc, char **argv) {
 
     // Create socket
     comDebugStep("Creating server socket...");
-    const int port = atoi(argv[2]);
-    int servSocket = netListen(port, TIMEOUT_CONN_SECS, MAX_CONNECTIONS);
+    const char *portStr = argv[1];
+    const int ipVersion = 4;
+    int servSocket = netListen(portStr, TIMEOUT_CONN_SECS, MAX_CONNECTIONS, &ipVersion);
 
     const int dbgTxtLength = BUF_SIZE;
     char dbgTxt[dbgTxtLength];
@@ -65,20 +65,20 @@ int main(int argc, char **argv) {
             comLogErrorAndDie(dbgTxt);
         }
 
-        sprintf(dbgTxt, "All set! Server is bound to %s:%d\nWaiting for connections...", boundAddr, port);
+        sprintf(dbgTxt, "All set! Server is bound to %s:%s\nWaiting for connections...", boundAddr, portStr);
         comDebugStep(dbgTxt);
     }
 
     // Initialize equipments list
-    Equipment equipments[MAX_CONNECTIONS];
-    for (int i = 0; i < MAX_CONNECTIONS; i++)
-        equipments[i] = getEmptyEquipment();
+    // Equipment equipments[MAX_CONNECTIONS];
+    // for (int i = 0; i < MAX_CONNECTIONS; i++)
+    //     equipments[i] = getEmptyEquipment();
 
     while (true) {
 
         // Criar socket para receber conexoes de clientes
         struct sockaddr_storage clientAddr;
-        socklen_t clientAddrLen = sizeof(clientAddr);
+        // socklen_t clientAddrLen = sizeof(clientAddr);
 
         // Accept client
         int cliSocket = netAccept(servSocket);
@@ -88,13 +88,8 @@ int main(int argc, char **argv) {
         if (!clientData)
             comLogErrorAndDie("Failure as trying to set new client connection data");
 
-        struct timeval timeoutTransfer;
-        timeoutTransfer.tv_sec = TIMEOUT_TRANSFER_SECS;
-        timeoutTransfer.tv_usec = 0;
-
         clientData->socket = cliSocket;
         memcpy(&(clientData->address), &clientAddr, sizeof(clientAddr));
-        memcpy(&(clientData->timeout), &timeoutTransfer, sizeof(timeoutTransfer));
 
         // Inicia nova thread para tratar a nova conexao
         pthread_t tid;
@@ -110,39 +105,39 @@ int main(int argc, char **argv) {
 void *servThreadClientHandler(void *threadInput) {
 
     comDebugStep("\n[thread] Starting new thread..\n");
-    char errMsg[BUF_SIZE];
+    // char errMsg[BUF_SIZE];
     
     // Avalia entrada
     struct ClientData *client = (struct ClientData *)threadInput;
-    struct sockaddr *clientAddr = (struct sockaddr *)(&client->address);
+    // struct sockaddr *clientAddr = (struct sockaddr *)(&client->address);
 
     // Notifica origem da conexao
-    if (DEBUG_ENABLE) {
-        char clientAddrStr[INET_ADDRSTRLEN + 1] = "";
-        if (posixAddressToString(clientAddr, clientAddrStr)) {
-            memset(errMsg, 0, BUF_SIZE);
-            sprintf(errMsg, "[thread] Connected to client at %s...\n", clientAddrStr);
-            comDebugStep(errMsg);
-        }
-    }
+    // if (DEBUG_ENABLE) {
+    //     char clientAddrStr[INET_ADDRSTRLEN + 1] = "";
+    //     if (posixAddressToString(clientAddr, clientAddrStr)) {
+    //         memset(errMsg, 0, BUF_SIZE);
+    //         sprintf(errMsg, "[thread] Connected to client at %s...\n", clientAddrStr);
+    //         comDebugStep(errMsg);
+    //     }
+    // }
 
 
     // RECV
     char buffer[BUF_SIZE];
-    size_t receivedBytes = posixRecv(client->socket, buffer, &client->timeout);
-    if (receivedBytes == -1) {
-        // sprintf(errMsg, "Failure as receiving data from client [%s] [2]", opLabel);
-        servThreadCloseOnError(client, errMsg);
-    }
+    // size_t receivedBytes = posixRecv(client->socket, buffer, &client->timeout);
+    // if (receivedBytes == -1) {
+    //     // sprintf(errMsg, "Failure as receiving data from client [%s] [2]", opLabel);
+    //     servThreadCloseOnError(client, errMsg);
+    // }
 
 
-    // SEND
     comDebugStep("[thread] Receiving text length...\n");
-    int bytesToReceive = sizeof(uint32_t);
+    // int bytesToReceive = sizeof(uint32_t);
     servReceiveMsg(client->socket, buffer);
 
-    // char answer[10];
-    // netSend(client->socket, answer);
+    // SEND
+    char answer[1000];
+    netSend(client->socket, answer);
 
     // End thread successfully
 	comDebugStep("\n[thread] Done!\n");
@@ -158,16 +153,10 @@ void *servThreadClientHandler(void *threadInput) {
 
 bool servValidateInput(int argc, char **argv) {
 
-	if (argc != 3) {
+	if (argc != 2) {
         comDebugStep("Invalid argc!\n");
 		return false;
     }
-
-    // Validate ip type
-	if (netGetIpType(argv[1]) == -1) {
-		comDebugStep("Invalid IP type!\n");
-		return false;
-	}
 
     // Validate port
 	const char *portStr = argv[1];
@@ -181,8 +170,8 @@ bool servValidateInput(int argc, char **argv) {
 
 void servExplainAndDie(char **argv) {
     printf("\nInvalid Input\n");
-    printf("Usage: %s [ip type] [port number]>\n", argv[0]);
-	printf("Example: %s v4 51511\n", argv[0]);
+    printf("Usage: %s [port number]>\n", argv[0]);
+	printf("Example: %s %d\n", argv[0], PORT_DEFAULT);
     exit(EXIT_FAILURE);
 }
 
@@ -191,7 +180,7 @@ void servReceiveMsg(const int cliSocket, char buffer[BUF_SIZE]) {
     comDebugStep("Waiting for command...");
     memset(buffer, 0, BUF_SIZE);
     
-    size_t receivedBytes = netRecv(cliSocket, buffer, TIMEOUT_TRANSFER_SECS);
+    ssize_t receivedBytes = netRecv(cliSocket, buffer, TIMEOUT_TRANSFER_SECS);
     if (receivedBytes == -1)
         comLogErrorAndDie("Failure as trying to receive messages from client");
 
