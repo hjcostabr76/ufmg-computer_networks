@@ -38,7 +38,8 @@ void servThreadCloseOnError(const struct ClientData *client, const char *errMsg)
  * ------------------------------------------------
  */
 
-Equipment equipments[MAX_CONNECTIONS];
+int nEquipments = 0;
+bool equipments[MAX_CONNECTIONS] = { false };
 
 int main(int argc, char **argv) {
 
@@ -65,10 +66,6 @@ int main(int argc, char **argv) {
         sprintf(dbgTxt, "All set! Server is bound to %s:%s\nWaiting for connections...", boundAddr, portStr);
         comDebugStep(dbgTxt);
     }
-
-    // Initialize equipments list
-    for (int i = 0; i < MAX_CONNECTIONS; i++)
-        equipments[i] = getEmptyEquipment();
 
     // Accept & open thread to handle new client
     while (true) {

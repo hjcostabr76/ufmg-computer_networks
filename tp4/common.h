@@ -18,23 +18,41 @@
 #define TIMEOUT_CONN_SECS 15
 #define TIMEOUT_TRANSFER_SECS 15
 
-#define CMD_COUNT 5
-// #define MAX_SENSORS 15
+#define CMD_COUNT 3
 
-// #define ASCII_NUM_FIRST 48
-// #define ASCII_NUM_LAST 57
-// #define ASCII_CHAR_LC_FIRST 97
-// #define ASCII_CHAR_LC_LAST 122
-// #define ASCII_CHAR_UC_FIRST 65
-// #define ASCII_CHAR_UC_LAST 90
+#define ASCII_NUM_FIRST 48
+#define ASCII_NUM_LAST 57
+#define ASCII_CHAR_LC_FIRST 97
+#define ASCII_CHAR_LC_LAST 122
+#define ASCII_CHAR_UC_FIRST 65
+#define ASCII_CHAR_UC_LAST 90
 
 extern const char* EQUIP_IDS[MAX_CONNECTIONS];
 
-// extern const char* CMD_NAME[5];
-// extern const char* CMD_PATTERN[CMD_COUNT];
+extern const char* CMD_NAME[CMD_COUNT];
 
-// typedef enum { CMD_CODE_ADD, CMD_CODE_RM, CMD_CODE_LIST, CMD_CODE_READ, CMD_CODE_KILL } CmdCodeEnum;
-// typedef enum { ERR_CMD_INVALID = 1, ERR_EQUIP_INVALID, ERR_SENSOR_INVALID, ERR_SENSOR_REPEATED, ERR_SENSOR_LIMIT } ErrCodeEnum;
+typedef enum { CMD_CODE_KILL, CMD_CODE_LIST, CMD_CODE_INFO } CommandCodeEnum;
+
+typedef enum { OK_RM } OkMessageCodeEnum;
+
+typedef enum {
+    ERR_NOT_FOUND,
+    ERR_NOT_FOUND_SRC,
+    ERR_NOT_FOUND_TARGET,
+    ERR_MAX_EQUIP,
+} ErrorCodeEnum;
+
+typedef enum {
+    MSG_REQ_ADD,
+    MSG_REQ_RM,
+    MSG_REQ_INF,
+    MSG_REQ_LIST,
+    MSG_RES_ADD,
+    MSG_RES_RM,
+    MSG_RES_INF,
+    MSG_ERR,
+    MSG_OK
+} MessageIdEnum;
 
 /**
  * ------------------------------------------------
@@ -42,17 +60,11 @@ extern const char* EQUIP_IDS[MAX_CONNECTIONS];
  * ------------------------------------------------
  */
 
-// typedef struct {
-//     ErrCodeEnum error;
-//     CmdCodeEnum code;
-//     int equipCode;
-//     bool sensors[SENSOR_COUNT];
-// } Command;
-
 typedef struct {
-    int id;
-} Equipment;
-
+    MessageIdEnum id;
+    int source;
+    int target;
+} MessageHeader;
 
 /**
  * ------------------------------------------------
@@ -67,7 +79,7 @@ void comLogErrorAndDie(char *msg);
 
 /** -- MAIN ------------- */
 
-Equipment getEmptyEquipment(void);
+// Equipment getEmptyEquipment(void);
 // Command getGenericCommand(void);
 // Command getEmptyCommand(CmdCodeEnum code);
 // Command getCommand(const char* input);
@@ -85,12 +97,12 @@ bool netSetSocketAddrString(const int sock, char *addrStr);
 /** -- STRING ----------- */
 
 // int comValidateLCaseString(const char *string, const int strLength);
-// bool strReadFromStdIn(char *buffer, size_t buffLength);
+bool strReadFromStdIn(char *buffer, size_t buffLength);
 // bool strRegexMatch(const char* pattern, const char* str, char errorMsg[100]);
 bool strEndsWith(const char *target, const char *suffix);
 // bool strStartsWith(const char *target, const char *prefix);
 bool strIsNumeric(const char *string);
-// bool strIsAlphaNumericChar(const char c);
+bool strIsAlphaNumericChar(const char c);
 // char* strTrim(const char *string);
 // char** strSplit(char* source, const char delimiter[1], const int maxTokens, const int maxLength, int *tokensCount);
 // void strGetSubstring(const char *src, char *dst, size_t start, size_t end);

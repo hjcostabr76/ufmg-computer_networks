@@ -20,16 +20,7 @@
  */
 
 const char* NET_END_SEQ = "#_#";
-// const char* EQUIP_IDS[4] = { "01", "02", "03", "04" };
-
-// const char* CMD_NAME[CMD_COUNT] = { "add sensor", "remove sensor", "list sensors", "read", "kill" };
-// const char* CMD_PATTERN[CMD_COUNT] = {
-//     "^add sensor ([0-9]{2} ){1,4}in [0-9]{2}$",
-//     "^remove sensor ([0-9]{2} ){1,4}in [0-9]{2}$",
-//     "^list sensors in [0-9]{2}$",
-//     "^read ([0-9]{2} ){1,4}in [0-9]{2}$",
-//     "^kill$"
-// };
+const char* CMD_NAME[CMD_COUNT] = { "close connection", "list equipment", "request information from" };
 
 typedef enum { SOCK_ACTION_RD = 10, SOCK_ACTION_WT } SocketActionEnum;
 
@@ -81,12 +72,6 @@ void comDebugStep(const char *text) {
 // 	}
 // 	return -1;
 // }
-
-Equipment getEmptyEquipment() {
-    Equipment equip;
-    equip.id = 1;
-    return equip;
-}
 
 // Command getGenericCommand(void) {
 //     Command command;
@@ -435,22 +420,22 @@ bool strIsNumeric(const char *string) {
 	return true;
 }
 
-// bool strIsAlphaNumericChar(const char c) {
-// 	return (
-// 		(c >= ASCII_NUM_FIRST && c <= ASCII_NUM_LAST)
-// 		|| (c >= ASCII_CHAR_LC_FIRST && c <= ASCII_CHAR_LC_LAST)
-// 		|| (c >= ASCII_CHAR_UC_FIRST && c <= ASCII_CHAR_UC_LAST)
-// 		|| c == ' '
-// 	);
-// }
+bool strIsAlphaNumericChar(const char c) {
+	return (
+		(c >= ASCII_NUM_FIRST && c <= ASCII_NUM_LAST)
+		|| (c >= ASCII_CHAR_LC_FIRST && c <= ASCII_CHAR_LC_LAST)
+		|| (c >= ASCII_CHAR_UC_FIRST && c <= ASCII_CHAR_UC_LAST)
+		|| c == ' '
+	);
+}
 
-// bool strReadFromStdIn(char *buffer, size_t buffLength) {
-//     if (!fgets(buffer, buffLength, stdin))
-// 		return false; // Error...
-// 	int lastCharIdx = strcspn(buffer, "\n");
-// 	buffer[lastCharIdx] = '\0';
-// 	return true;
-// }
+bool strReadFromStdIn(char *buffer, size_t buffLength) {
+    if (!fgets(buffer, buffLength, stdin))
+		return false; // Error...
+	int lastCharIdx = strcspn(buffer, "\n");
+	buffer[lastCharIdx] = '\0';
+	return true;
+}
 
 // bool strStartsWith(const char *target, const char *prefix) {
 // 	size_t targetLength = strlen(target);
