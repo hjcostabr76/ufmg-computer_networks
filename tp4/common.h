@@ -64,7 +64,8 @@ typedef struct {
     MessageIdEnum id;
     int source;
     int target;
-} MessageHeader;
+    void *payload;
+} Message;
 
 /**
  * ------------------------------------------------

@@ -37,7 +37,6 @@ int main(int argc, char **argv) {
 		cliExplainAndDie(argv);
 	comDebugStep("Initialization is ok!");
 
-
 	// Create socket
 	comDebugStep("Creating socket...");
 
@@ -50,6 +49,13 @@ int main(int argc, char **argv) {
 		sprintf(dbgTxt, "Connected to %s:%s", addrStr, portStr);
 		comDebugStep(dbgTxt);
 	}
+
+	// Request server to enter the network
+	// char input[BUF_SIZE] = '\0';
+	// char answer[BUF_SIZE] = '\0';
+
+	// setMessageAdd(input); // TODO: Rename
+	// cliSendCommand(sock, input, answer);
 
 	while (true) {
 
@@ -138,15 +144,14 @@ void cliSendCommand(const int socket, const char* input, char *answer) {
 		comLogErrorAndDie("Sending command failure");
 
 	// Wait for response
-	comDebugStep("Waiting server answer..");
+	comDebugStep("Waiting server answer...");
 	memset(answer, 0, BUF_SIZE);
 	ssize_t receivedBytes = netRecv(socket, answer, TIMEOUT_TRANSFER_SECS);
 	if (receivedBytes == -1)
 		comLogErrorAndDie("Failure as trying to receive server answer");
 
 	if (DEBUG_ENABLE) {
-		char dbgTxt[BUF_SIZE];
-		memset(dbgTxt, 0, BUF_SIZE);
+		char dbgTxt[BUF_SIZE] = '\0';
 		sprintf(dbgTxt, "Server response received with %lu bytes", receivedBytes);
 		comDebugStep(dbgTxt);
 	}

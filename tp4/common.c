@@ -19,10 +19,40 @@
  * ------------------------------------------------
  */
 
-const char* NET_END_SEQ = "#_#";
+/*
+	-------------------------------------- >
+	>> How messages should look like
+	-------------------------------------- >
+	<msg>
+		<id>[msg_id]<id/>
+		<src>[eq_id]<src/>
+		<target>[eq_id]<target/>
+		<payload>[whatever]<payload/>
+	<msg/>
+*/
+const char* NET_TAG_MSG = "<msg>";
+const char* NET_TAG_ID = "<id>";
+const char* NET_TAG_SRC = "<src>";
+const char* NET_TAG_TARGET = "<target>";
+const char* NET_TAG_PAYLOAD = "<payload>";
+
 const char* CMD_NAME[CMD_COUNT] = { "close connection", "list equipment", "request information from" };
 
 typedef enum { SOCK_ACTION_RD = 10, SOCK_ACTION_WT } SocketActionEnum;
+
+
+// void buildMessageToSend(const Message msg, char *buffer) {
+// 	memset(buffer, '\0', buffer);
+	
+	
+
+// 	strcat(buffer, NET_TAG_MSG);
+
+
+// 	strcat(buffer, NET_TAG_ID);
+// 	strcat(buffer, NET_TAG_ID);
+// 	strcat(buffer, NET_TAG_ID);
+// }
 
 /**
  * ------------------------------------------------
@@ -64,92 +94,6 @@ void comDebugStep(const char *text) {
  * == MAIN ========================================
  * ------------------------------------------------
  */
-
-// int getEquipmentCodeById(const char* id) {
-// 	for (int i = 0; i < EQUIP_COUNT; i++) {
-// 		if (strcmp(EQUIP_IDS[i], id) == 0)
-// 			return i;
-// 	}
-// 	return -1;
-// }
-
-// Command getGenericCommand(void) {
-//     Command command;
-//     command.error = 0;
-//     command.equipCode = getEquipmentCodeById("");
-//     for (int i = 0; i < SENSOR_COUNT; i++)
-//         command.sensors[i] = false;
-//     return command;
-// }
-
-// Command getEmptyCommand(CmdCodeEnum code) {
-//     Command command = getGenericCommand();
-//     command.code = code;
-//     return command;
-// }
-
-// Command getCommand(const char* input) {
-
-//     Command cmd = getGenericCommand();
-    
-//     // Identify command type
-// 	bool isMatch = false;
-//     for (int i = 0; i < CMD_COUNT; i++) {
-//         char regexMsg[100];
-//         isMatch = strRegexMatch(CMD_PATTERN[i], input, regexMsg);
-//         if (isMatch) {
-// 			cmd.code = i;
-// 			break;
-// 		}
-// 	}
-
-// 	if (!isMatch)
-// 		cmd.error = ERR_CMD_INVALID;
-
-// 	if (!isMatch || cmd.code == CMD_CODE_KILL)
-//         return cmd;
-
-//     // Determine equipment
-//     char inputCopy[100];
-//     strcpy(inputCopy, input);
-
-//     int inputArgsC;
-//     char** inputArgs = strSplit(inputCopy, " ", 8, 100, &inputArgsC);
-
-//     cmd.equipCode = getEquipmentCodeById(inputArgs[inputArgsC - 1]);
-// 	if (cmd.equipCode == -1)
-// 		cmd.error = ERR_EQUIP_INVALID;
-
-//     if (cmd.error || cmd.code == CMD_CODE_LIST)
-//         return cmd;
-
-//     // Determine sensors
-//     for (int i = 0; i < SENSOR_COUNT; i++) {
-//         cmd.sensors[i] = false;
-// 	}
-
-//     int firstSensorIdx = cmd.code == CMD_CODE_READ ? 1 : 2;
-//     for (int i = firstSensorIdx; i < inputArgsC - 2; i++) {
-        
-// 		// Validate sensor
-// 		int sensorCode = atoi(inputArgs[i]) - 1;
-// 		int isValid = sensorCode >= 0 && sensorCode < SENSOR_COUNT;
-// 		if (!isValid) {
-// 			cmd.error = ERR_SENSOR_INVALID;
-// 			return cmd;
-// 		}
-
-//         if (cmd.sensors[sensorCode]) {
-//             cmd.error = ERR_SENSOR_REPEATED;
-//             return cmd;
-//         }
-
-// 		// It's fine
-//         cmd.sensors[sensorCode] = true;
-//     }
-    
-//     return cmd;
-// }
 
 /**
  * ------------------------------------------------
@@ -250,9 +194,9 @@ int netConnect(const char *portStr, const char *addrStr, const int timeoutSecs, 
 
 bool netSend(const int socket, const char *msg) {
 
-	char buffer[BUF_SIZE + strlen(NET_END_SEQ)];
+	char buffer[BUF_SIZE + strlen(NET_TAG_MSG)];
 	strcpy(buffer, msg);
-	strcat(buffer, NET_END_SEQ);
+	strcat(buffer, NET_TAG_MSG);
 
 	ssize_t acc = 0;
 	const ssize_t bytesToSend = strlen(buffer);
@@ -328,9 +272,9 @@ ssize_t netRecv(const int cliSocket, char *buffer, const int timeoutSecs) {
 		acc += receivedBytes;
 		
 		// Check if message is over
-		bool isOver = strEndsWith(buffer, NET_END_SEQ);
+		bool isOver = strEndsWith(buffer, NET_TAG_MSG);
 		if (isOver) {
-			int endSeqSize = strlen(NET_END_SEQ);
+			int endSeqSize = strlen(NET_TAG_MSG);
 			acc -= endSeqSize; // Don't compute control characters
 			buffer[strlen(buffer) - endSeqSize] = '\0';
 			break;
