@@ -392,7 +392,7 @@ bool netIsActionAvailable(int socket, const SocketActionEnum action, struct time
 	return true;
 }
 
-bool netSetSocketAddressString(int socket, char *addrStr) {
+bool netSetSocketAddrString(const int sock, char *addrStr) {
 
 	struct sockaddr_storage storage;
 	memset(&storage, 0, sizeof(storage));
@@ -401,7 +401,7 @@ bool netSetSocketAddressString(int socket, char *addrStr) {
 	memset(addr, 0, sizeof(*addr));
 
 	socklen_t socketLength = sizeof(addr);
-	getsockname(socket, (struct sockaddr*)addr, &socketLength);
+	getsockname(sock, (struct sockaddr*)addr, &socketLength);
 
 	if (((struct sockaddr *)addr)->sa_family == AF_INET) {
 		inet_ntop(AF_INET, &(((struct sockaddr_in *)addr)->sin_addr), addrStr, INET_ADDRSTRLEN + 1);

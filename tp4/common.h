@@ -80,7 +80,7 @@ bool netSend(const int socket, const char *msg);
 int netAccept(const int servSocket);
 ssize_t netRecv(const int cliSocket, char *buffer, const int timeoutSecs);
 int netGetIpType(const char *ipTypeStr);
-bool netSetSocketAddressString(int socket, char *boundAddr);
+bool netSetSocketAddrString(const int sock, char *addrStr);
 
 /** -- STRING ----------- */
 

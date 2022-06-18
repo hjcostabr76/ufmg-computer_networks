@@ -11,16 +11,9 @@
 #include <unistd.h>
 // #include <errno.h>
 
-struct ConnThreadData {
-    int socket;
-    int addrFamily;
-};
-
 struct ClientData {
     int socket;
-    struct sockaddr_storage address;
 };
-
 
 /**
  * ------------------------------------------------
@@ -39,6 +32,13 @@ void servReceiveMsg(int cliSocket, char buffer[BUF_SIZE]);
 void *servThreadClientHandler(void *data);
 void servThreadCloseOnError(const struct ClientData *client, const char *errMsg);
 
+/**
+ * ------------------------------------------------
+ * == MAIN ========================================
+ * ------------------------------------------------
+ */
+
+Equipment equipments[MAX_CONNECTIONS];
 
 int main(int argc, char **argv) {
 
@@ -53,14 +53,11 @@ int main(int argc, char **argv) {
     const int ipVersion = 4;
     int servSocket = netListen(portStr, TIMEOUT_CONN_SECS, MAX_CONNECTIONS, &ipVersion);
 
-    const int dbgTxtLength = BUF_SIZE;
-    char dbgTxt[dbgTxtLength];
-    
     if (DEBUG_ENABLE) {
 
-        char boundAddr[200];
-        memset(dbgTxt, 0, dbgTxtLength);
-        if (!netSetSocketAddressString(servSocket, boundAddr)) {
+        char dbgTxt[BUF_SIZE] = "";
+        char boundAddr[200] = "";
+        if (!netSetSocketAddrString(servSocket, boundAddr)) {
             sprintf(dbgTxt, "Failure as trying to exhibit bound address...");
             comLogErrorAndDie(dbgTxt);
         }
@@ -70,30 +67,15 @@ int main(int argc, char **argv) {
     }
 
     // Initialize equipments list
-    // Equipment equipments[MAX_CONNECTIONS];
-    // for (int i = 0; i < MAX_CONNECTIONS; i++)
-    //     equipments[i] = getEmptyEquipment();
+    for (int i = 0; i < MAX_CONNECTIONS; i++)
+        equipments[i] = getEmptyEquipment();
 
+    // Accept & open thread to handle new client
     while (true) {
-
-        // Criar socket para receber conexoes de clientes
-        struct sockaddr_storage clientAddr;
-        // socklen_t clientAddrLen = sizeof(clientAddr);
-
-        // Accept client
         int cliSocket = netAccept(servSocket);
-
-        // Define dados para thread de tratamento da nova conexao
-        struct ClientData *clientData = malloc(sizeof(*clientData));
-        if (!clientData)
-            comLogErrorAndDie("Failure as trying to set new client connection data");
-
-        clientData->socket = cliSocket;
-        memcpy(&(clientData->address), &clientAddr, sizeof(clientAddr));
-
-        // Inicia nova thread para tratar a nova conexao
-        pthread_t tid;
-        pthread_create(&tid, NULL, servThreadClientHandler, clientData);
+        pthread_t threadID;
+        struct ClientData clientData = { cliSocket };
+        pthread_create(&threadID, NULL, servThreadClientHandler, &clientData);
     }
 
     exit(EXIT_SUCCESS);
@@ -104,35 +86,24 @@ int main(int argc, char **argv) {
  */
 void *servThreadClientHandler(void *threadInput) {
 
-    comDebugStep("\n[thread] Starting new thread..\n");
-    // char errMsg[BUF_SIZE];
+    comDebugStep("[thread] Starting new thread...");
+    char notificationMsg[BUF_SIZE];
     
-    // Avalia entrada
+    // Parse input
     struct ClientData *client = (struct ClientData *)threadInput;
-    // struct sockaddr *clientAddr = (struct sockaddr *)(&client->address);
 
-    // Notifica origem da conexao
-    // if (DEBUG_ENABLE) {
-    //     char clientAddrStr[INET_ADDRSTRLEN + 1] = "";
-    //     if (posixAddressToString(clientAddr, clientAddrStr)) {
-    //         memset(errMsg, 0, BUF_SIZE);
-    //         sprintf(errMsg, "[thread] Connected to client at %s...\n", clientAddrStr);
-    //         comDebugStep(errMsg);
-    //     }
-    // }
-
+    if (DEBUG_ENABLE) {
+        char clientAddrStr[INET6_ADDRSTRLEN + 1] = "";
+        if (netSetSocketAddrString(client->socket, clientAddrStr)) {
+            memset(notificationMsg, 0, BUF_SIZE);
+            sprintf(notificationMsg, "[thread] Connected to client at %s...", clientAddrStr);
+            comDebugStep(notificationMsg);
+        }
+    }
 
     // RECV
     char buffer[BUF_SIZE];
-    // size_t receivedBytes = posixRecv(client->socket, buffer, &client->timeout);
-    // if (receivedBytes == -1) {
-    //     // sprintf(errMsg, "Failure as receiving data from client [%s] [2]", opLabel);
-    //     servThreadCloseOnError(client, errMsg);
-    // }
-
-
-    comDebugStep("[thread] Receiving text length...\n");
-    // int bytesToReceive = sizeof(uint32_t);
+    comDebugStep("[thread] Receiving text length...");
     servReceiveMsg(client->socket, buffer);
 
     // SEND
@@ -140,7 +111,7 @@ void *servThreadClientHandler(void *threadInput) {
     netSend(client->socket, answer);
 
     // End thread successfully
-	comDebugStep("\n[thread] Done!\n");
+	comDebugStep("[thread] Done!");
     close(client->socket);
     pthread_exit(EXIT_SUCCESS);
 }
