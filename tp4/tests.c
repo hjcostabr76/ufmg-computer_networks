@@ -1,49 +1,33 @@
 #include "common.h"
 
-// #include <stdio.h>
 #include <stdlib.h>
-// #include <pthread.h>
-// #include <sys/socket.h>
-// #include <inttypes.h>
-// #include <arpa/inet.h>
-// #include <sys/time.h>
 #include <string.h>
-// #include <unistd.h>
-// #include <errno.h>
 
 typedef struct {
     int nTests;
-    int nSuccesses;
+    int nFailures;
 } TestResult;
 
 typedef struct {
     int nTests;
-    int nSuccesses;
+    int nFailures;
     TestResult tests[20];
 } TestBatchResult;
 
-// bool isBatchSuccess(TestBatchResult result) {
-//     int accSuccess = 0;
-//     for (int i = 0; i < result.nTests; i++) {
-//         if (result.tests[i] != NULL)
-//             accSuccess += result.tests[i].nSuccesses;
-//     }
-//     return accSuccess == result.nTests;
-// }
-
-TestResult testBatch(const char **messages, const int nTests, const bool isValidMessage) {
+TestResult testBatch(const char **messages, const int nTests, const bool isValidMessage, const char *title) {
 
     char testType[15] = "";
     strcpy(testType, isValidMessage ? "Good\0" : "Bad\0");
+    printf("\n\n----- New Test: %s ------------------------------", title);
     
-    int nSuccesses = 0;
+    int nFailures = 0;
     for (int i = 0; i < nTests; i++) {
         
         printf("\nTesting %s pattern:\n\t\"%s\"...", testType, messages[i]);
         const bool passedValidation = validateReceivedMsg(messages[i]);
         const bool isSuccess = (passedValidation && isValidMessage) || (!passedValidation && !isValidMessage);
-        if (isSuccess) {
-            nSuccesses++;
+        if (!isSuccess) {
+            nFailures++;
         }
         
         char resultMsg[10];
@@ -52,36 +36,27 @@ TestResult testBatch(const char **messages, const int nTests, const bool isValid
     }
 
     printf("\n");
+
+    if (!nFailures)
+        printf("-------------------- ALL TESTS PASSED! ------------------\n");
+    else
+        printf("-------------------- %d TEST(S) FAILED --------------------\n", nFailures);
     
-    // const TestResult result = { nTests, nSuccesses };
-    const TestResult result = { nTests, nSuccesses, NULL };
-    // TestResult result;
-    // result.nTests = nTests;
-    // result.nSuccesses = nSuccesses;
-    // result.tests = NULL;
+    const TestResult result = { nTests, nFailures };
     return result;
 }
 
-TestBatchResult testRename(void) {
+TestResult testProtocolFormattedMessages(void) {
 
-    printf("\n\n>>>>>>>>>> Tests for regex >>>>>>>>>>\n\n");
+    printf("\n");
+    printf("\n>> ---------------------------------------------------------------------------- >>");
+    printf("\n>> TEST: Validate protocol formatted messages --------------------------------- >>");
+    printf("\n>> ---------------------------------------------------------------------------- >>");
     
-    // int resultSize = 20 * sizeof(TestResult);
-    // TestResult* allResults = (TestResult *)malloc(resultSize);
-    // memset(allResults, NULL, resultSize);
+    TestResult aux = { 0, 0 };
+    TestResult finalResult = { 0, 0 };
 
-    int aux = 20;
-    TestResult resultAux = { 0, 0 };
-    TestResult partialResults[20] = { 0, 0 };
-
-    TestBatchResult finalResult = { 0, -1, { 0, 0 } };
-    // finalResult.nSuccesses = 0;
-    // finalResult.nTests = -1;
-    // finalResult.tests = { 0, 0 };
-
-    
-
-    /* ---------------- Good ----------------  */
+    /* - New Test ------------- */
     bool isValid = true;
     
     finalResult.nTests++;
@@ -90,12 +65,12 @@ TestBatchResult testRename(void) {
         "<msg><id>1<id><src>2<src><target>3<target><msg>",
         "<msg><id>1<id><src>2<src><target>3<target><payload>Loren Ipsun 123 Dolur<payload><msg>"
     };
-    resultAux = testBatch(goodMessages, nPatterns, isValid);
-    finalResult.nSuccesses += (resultAux.nTests == resultAux.nSuccesses);
-    partialResults[finalResult.nTests] = resultAux;
+    aux = testBatch(goodMessages, nPatterns, isValid, "Good");
+    finalResult.nFailures += aux.nFailures;
+    finalResult.nTests += aux.nTests;
     printf("\n");
 
-    /* - Bad: Wrong Tag names ---------------  */
+    /* - New Test ------------- */
     isValid = false;
     
     finalResult.nTests++;
@@ -108,12 +83,12 @@ TestBatchResult testRename(void) {
         "<msg><id>1<id><src>2<src><target>3<target/><payload>Loren Ipsun 123 Dolur<payload><msg>",
         "<msg><id>1<id><src>2<src/><target>3<target><payload>Loren Ipsun 123 Dolur<payload><msg>"
     };
-    resultAux = testBatch(badMessagesWrongTag, nPatterns, isValid);
-    finalResult.nSuccesses += (resultAux.nTests == resultAux.nSuccesses);
-    partialResults[finalResult.nTests] = resultAux;
+    aux = testBatch(badMessagesWrongTag, nPatterns, isValid, "Bad: Wrong Tag names");
+    finalResult.nFailures += aux.nFailures;
+    finalResult.nTests += aux.nTests;
     printf("\n");
 
-    /* - Bad: Missing close tags ------------  */
+    /* - New Test ------------- */
     finalResult.nTests++;
     nPatterns = 6;
     const char *badMessagesClosingTags[] = {
@@ -124,12 +99,12 @@ TestBatchResult testRename(void) {
         "<msg><id>1<id><src>2<target>3<target><payload>Loren Ipsun 123 Dolur<payload><msg>",
         "<msg><id>1<src>2<src><target>3<target><payload>Loren Ipsun 123 Dolur<payload><msg>"
     };
-    resultAux = testBatch(badMessagesClosingTags, nPatterns, isValid);
-    finalResult.nSuccesses += (resultAux.nTests == resultAux.nSuccesses);
-    partialResults[finalResult.nTests] = resultAux;
+    aux = testBatch(badMessagesClosingTags, nPatterns, isValid, "Bad: Missing close tags");
+    finalResult.nFailures += aux.nFailures;
+    finalResult.nTests += aux.nTests;
     printf("\n");
 
-    /* - Bad: Missing required fields -------  */
+    /* - New Test ------------- */
     finalResult.nTests++;
     nPatterns = 4;
     const char *badMessagesMissingFields[] = {
@@ -138,12 +113,12 @@ TestBatchResult testRename(void) {
         "<msg><id>1<id><src>2<src><target><target><msg>",
         "<msg><id>1<id><src>2<src><target>3<target><payload><payload><msg>",
     };
-    resultAux = testBatch(badMessagesMissingFields, nPatterns, isValid);
-    finalResult.nSuccesses += (resultAux.nTests == resultAux.nSuccesses);
-    partialResults[finalResult.nTests] = resultAux;
+    aux = testBatch(badMessagesMissingFields, nPatterns, isValid, "Bad: Missing required fields");
+    finalResult.nFailures += aux.nFailures;
+    finalResult.nTests += aux.nTests;
     printf("\n");
     
-    /* - Bad: Extra characters --------------  */
+    /* - New Test ------------- */
     finalResult.nTests++;
     nPatterns = 5;
     const char *badMessagesExtraChars[] = {
@@ -153,12 +128,12 @@ TestBatchResult testRename(void) {
         "<msg><id>1<id><src>2<src><target>3<target><payload>Loren Ipsun Dolur2<payload><msg>",
         "<msg><id>1<id><src>2<src><target>3<target><payload>1Loren Ipsun Dolur2<payload><msg>"
     };
-    resultAux = testBatch(badMessagesMissingFields, nPatterns, isValid);
-    finalResult.nSuccesses += (resultAux.nTests == resultAux.nSuccesses);
-    partialResults[finalResult.nTests] = resultAux;
+    aux = testBatch(badMessagesExtraChars, nPatterns, isValid, "Bad: Extra characters");
+    finalResult.nFailures += aux.nFailures;
+    finalResult.nTests += aux.nTests;
     printf("\n");
     
-    /* - Bad: Invalid characters ------------  */
+    /* - New Test ------------- */
     finalResult.nTests++;
     nPatterns = 3;
     const char *badMessagesInvalidChars[] = {
@@ -166,12 +141,12 @@ TestBatchResult testRename(void) {
         "<msg><id>1<id><src>2b<src><target>3<target><msg>",
         "<msg><id>1<id><src>2<src><target>3c<target><msg>"
     };
-    resultAux = testBatch(badMessagesInvalidChars, nPatterns, isValid);
-    finalResult.nSuccesses += (resultAux.nTests == resultAux.nSuccesses);
-    partialResults[finalResult.nTests] = resultAux;
+    aux = testBatch(badMessagesInvalidChars, nPatterns, isValid, "Bad: Invalid characters");
+    finalResult.nFailures += aux.nFailures;
+    finalResult.nTests += aux.nTests;
     printf("\n");
 
-    /* - Bad: Unexpected spaces -------------  */
+    /* - New Test ------------- */
     nPatterns = 3;
     finalResult.nTests++;
     const char *badMessagesSpaces[] = {
@@ -179,9 +154,9 @@ TestBatchResult testRename(void) {
         "<msg><id>1<id><src> <src><target>3<target><msg>",
         "<msg><id>1<id><src>2<src><target>3 <target><msg>"
     };
-    resultAux = testBatch(badMessagesSpaces, nPatterns, isValid);
-    finalResult.nSuccesses += (resultAux.nTests == resultAux.nSuccesses);
-    partialResults[finalResult.nTests] = resultAux;
+    aux = testBatch(badMessagesSpaces, nPatterns, isValid, "Bad: Unexpected spaces");
+    finalResult.nFailures += aux.nFailures;
+    finalResult.nTests += aux.nTests;
     printf("\n");
     
     return finalResult;
@@ -189,10 +164,35 @@ TestBatchResult testRename(void) {
 
 int main() {
 
-    bool isSuccess = true;
+    printf("\n");
+    printf("\n>> ---------------------------------------------------------------------------- >>");
+    printf("\n>> Running tests... >> Running tests... >> Running tests... >> Running tests... >>");
+    printf("\n>> ---------------------------------------------------------------------------- >>");
 
-    TestBatchResult foo = testRename();
-    isSuccess = isSuccess && (foo.nTests == foo.nSuccesses);
+    // Run test groups
+    TestResult acc = { 0, 0 };
+    TestResult aux;
+    int nGroups = 0;
+
+    nGroups++;
+    aux = testProtocolFormattedMessages();
+    acc.nTests += aux.nTests;
+    acc.nFailures += aux.nFailures;
+
+    // Notify end result
+    bool isSuccess = acc.nFailures == 0;
+    printf("\n<< ---------------------------------------------------------------------------- <<\n");
+
+    if (isSuccess)
+        printf("<<<< All tests passed! >>> <<<< All tests passed!! >>>> <<< All tests passed! >>>>\n");
+    else
+        printf("<<<<--- TESTS FAILED --->>> <<<--- TESTS FAILED --->>> <<<--- TESTS FAILED --->>>>\n");
     
-    return isSuccess ? EXIT_SUCCESS : EXIT_FAILURE;
+    printf("<< ---------------------------------------------------------------------------- <<\n\n");
+    printf(">> %d test group(s);\n", nGroups);
+    printf(">> %d unit test(s);\n", acc.nTests);
+    printf(">> %d error(s);\n", acc.nFailures);
+    printf("\n");
+
+    return EXIT_SUCCESS;
 }
