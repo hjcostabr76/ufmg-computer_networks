@@ -66,7 +66,7 @@ int main(int argc, char **argv) {
 
 		char* input = cliGetCleanInput(aux);
 		if (strcasecmp(input, aux) != 0) {
-			memset(dbgTxt, '\0', strlen(dbgTxt));
+			memset(dbgTxt, 0, strlen(dbgTxt));
 			sprintf(dbgTxt, "Input had to be cleared:\n\t[before] '%s'\n\t[after] '%s'", aux, input);
 			comDebugStep(dbgTxt);
 		}
@@ -151,7 +151,7 @@ void cliSendCommand(const int socket, const char* input, char *answer) {
 		comLogErrorAndDie("Failure as trying to receive server answer");
 
 	if (DEBUG_ENABLE) {
-		char dbgTxt[BUF_SIZE] = '\0';
+		char dbgTxt[BUF_SIZE] = "";
 		sprintf(dbgTxt, "Server response received with %lu bytes", receivedBytes);
 		comDebugStep(dbgTxt);
 	}

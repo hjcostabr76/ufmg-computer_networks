@@ -7,7 +7,7 @@
 #include <sys/types.h>
 #include <arpa/inet.h>
 #include <string.h>
-// #include <regex.h>
+#include <regex.h>
 #include <errno.h>
 #include <ctype.h>
 #include <netdb.h>
@@ -20,15 +20,15 @@
  */
 
 /*
-	-------------------------------------- >
-	>> How messages should look like
-	-------------------------------------- >
-	<msg>
-		<id>[msg_id]<id/>
-		<src>[eq_id]<src/>
-		<target>[eq_id]<target/>
-		<payload>[whatever]<payload/>
-	<msg/>
+-------------------------------------- >
+>> How messages should look like
+-------------------------------------- >
+<msg>
+	<id>[msg_id]<id/>
+	<src>[eq_id]<src/>
+	<target>[eq_id]<target/>
+	<payload>[whatever]<payload/>
+<msg/>
 */
 const char* NET_TAG_MSG = "<msg>";
 const char* NET_TAG_ID = "<id>";
@@ -40,25 +40,15 @@ const char* CMD_NAME[CMD_COUNT] = { "close connection", "list equipment", "reque
 
 typedef enum { SOCK_ACTION_RD = 10, SOCK_ACTION_WT } SocketActionEnum;
 
-
-// void buildMessageToSend(const Message msg, char *buffer) {
-// 	memset(buffer, '\0', buffer);
-	
-	
-
-// 	strcat(buffer, NET_TAG_MSG);
-
-
-// 	strcat(buffer, NET_TAG_ID);
-// 	strcat(buffer, NET_TAG_ID);
-// 	strcat(buffer, NET_TAG_ID);
-// }
-
 /**
  * ------------------------------------------------
  * == Local Headers ===============================
  * ------------------------------------------------
  */
+
+void initProtocolMessagesValidator();
+bool validateReceivedMsg(const char *message);
+void buildMessageToSend(const Message msg, char *buffer);
 
 bool netIsActionAvailable(int socket, const SocketActionEnum action, struct timeval *timeout);
 
@@ -94,6 +84,61 @@ void comDebugStep(const char *text) {
  * == MAIN ========================================
  * ------------------------------------------------
  */
+
+// char buffer[BUF_SIZE] = "";
+// char payload[MAX_PAYLOAD_SIZE] = "Loren Ipsun Dolur";
+// const Message message = { 1, 2, 3, (void *)payload };
+
+bool isProtocolInitialized = false;
+char protocolPattern[150] = "";
+
+void initProtocolMessagesValidator() {
+
+    if (isProtocolInitialized)
+        return;
+    isProtocolInitialized = true;
+
+    char patternHeader[] = "<id>[0-9]<id><src>[0-9]{1,2}<src><target>[0-9]{1,2}<target>";
+    char patternPayload[] = "(<payload>[a-zA-Z][0-9a-zA-Z\\t ]+[a-zA-Z]<payload>)?";
+    
+    strcat(protocolPattern, NET_TAG_MSG);
+    strcat(protocolPattern, patternHeader);
+    strcat(protocolPattern, patternPayload);
+    strcat(protocolPattern, NET_TAG_MSG);
+}
+
+bool validateReceivedMsg(const char *message) {
+    initProtocolMessagesValidator();
+    return strRegexMatch(protocolPattern, message, NULL);
+}
+
+void buildMessageToSend(const Message msg, char *buffer) {
+	memset(buffer, 0, BUF_SIZE);
+
+    char aux = '\0';
+	strcat(buffer, NET_TAG_MSG); // Message
+
+    strcat(buffer, NET_TAG_ID); // Id
+    aux = msg.id + '0';
+    strcat(buffer, &aux);
+	strcat(buffer, NET_TAG_ID); // Id
+	
+	strcat(buffer, NET_TAG_SRC); // Src
+    aux = msg.source + '0';
+    strcat(buffer, &aux);
+	strcat(buffer, NET_TAG_SRC); // Src
+	
+	strcat(buffer, NET_TAG_TARGET); // Target
+    aux = msg.target + '0';
+    strcat(buffer, &aux);
+	strcat(buffer, NET_TAG_TARGET); // Target
+	
+	strcat(buffer, NET_TAG_PAYLOAD); // Payload
+    strcat(buffer, (char *)msg.payload);
+	strcat(buffer, NET_TAG_PAYLOAD); // Payload
+
+	strcat(buffer, NET_TAG_MSG); // Message
+}
 
 /**
  * ------------------------------------------------
@@ -154,6 +199,7 @@ int netListen(const char *portStr, const int timeoutSecs, const int maxConnectio
 	if (listen(sock, maxConnections) != 0)
 		comLogErrorAndDie("Failure as starting to listen");
 	
+
 	freeaddrinfo(addrInfo); // Free the linked list
 	return sock;
 }
@@ -423,32 +469,34 @@ bool strEndsWith(const char *target, const char *suffix) {
 //     return tokens;
 // }
 
-// bool strRegexMatch(const char* pattern, const char* str, char errorMsg[100]) {
+bool strRegexMatch(const char* pattern, const char* str, char errorMsg[100]) {
 
-//     regex_t regex;
-//     memset(errorMsg, 0, 100);
+    regex_t regex;
+	if (errorMsg != NULL) {
+    	memset(errorMsg, 0, 100);
+	}
     
-//     // Compile
-//     int regStatus = regcomp(&regex, pattern, REG_EXTENDED);
-//     if (regStatus != 0) {
-//         sprintf(errorMsg, "Compiling error");
-//         return false;
-//     }
+    // Compile
+    int regStatus = regcomp(&regex, pattern, REG_EXTENDED);
+    if (regStatus != 0) {
+        sprintf(errorMsg, "Compiling error");
+        return false;
+    }
 
-//     // Execute
-//     regStatus = regexec(&regex, str, 0, NULL, 0);
+    // Execute
+    regStatus = regexec(&regex, str, 0, NULL, 0);
     
-//     bool isSuccess = regStatus == 0;
-//     if (!isSuccess && regStatus != REG_NOMATCH) { // Error
-//         char aux[100];
-//         regerror(regStatus, &regex, aux, 100);
-//         sprintf(errorMsg, "Match error: %s\n", aux);
-//     }
+    bool isSuccess = regStatus == 0;
+    if (errorMsg != NULL && !isSuccess && regStatus != REG_NOMATCH) { // Error
+        char aux[100];
+        regerror(regStatus, &regex, aux, 100);
+        sprintf(errorMsg, "Match error: %s\n", aux);
+    }
 
-//     // Free memory allocated to the pattern buffer by regcomp()
-//     regfree(&regex);
-//     return isSuccess;
-// }
+    // Free memory allocated to the pattern buffer by regcomp()
+    regfree(&regex);
+    return isSuccess;
+}
 
 // char* strTrim(const char* input) {
 

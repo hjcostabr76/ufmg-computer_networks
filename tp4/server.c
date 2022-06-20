@@ -32,6 +32,25 @@ void servReceiveMsg(int cliSocket, char buffer[BUF_SIZE]);
 void *servThreadClientHandler(void *data);
 void servThreadCloseOnError(const struct ClientData *client, const char *errMsg);
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /**
  * ------------------------------------------------
  * == MAIN ========================================
@@ -40,185 +59,6 @@ void servThreadCloseOnError(const struct ClientData *client, const char *errMsg)
 
 int nEquipments = 0;
 bool equipments[MAX_CONNECTIONS] = { false };
-
-// const char* NET_TAG_MSG = "<msg>";
-const char* NET_TAG_ID = "<id>";
-const char* NET_TAG_SRC = "<src>";
-const char* NET_TAG_TARGET = "<target>";
-const char* NET_TAG_PAYLOAD = "<payload>";
-
-void buildMessageToSend(const Message msg, char *buffer) {
-	memset(buffer, 0, BUF_SIZE);
-
-    char aux = '\0';
-	strcat(buffer, NET_TAG_MSG); // Message
-
-    strcat(buffer, NET_TAG_ID); // Id
-    aux = msg.id + '0';
-    strcat(buffer, &aux);
-	strcat(buffer, NET_TAG_ID); // Id
-	
-	strcat(buffer, NET_TAG_SRC); // Src
-    aux = msg.source + '0';
-    strcat(buffer, &aux);
-	strcat(buffer, NET_TAG_SRC); // Src
-	
-	strcat(buffer, NET_TAG_TARGET); // Target
-    aux = msg.target + '0';
-    strcat(buffer, &aux);
-	strcat(buffer, NET_TAG_TARGET); // Target
-	
-	strcat(buffer, NET_TAG_PAYLOAD); // Payload
-    strcat(buffer, (char *)msg.payload);
-	strcat(buffer, NET_TAG_PAYLOAD); // Payload
-
-	strcat(buffer, NET_TAG_MSG); // Message
-}
-
-
-bool isProtocolInitialized = false;
-char protocolPattern[150] = "";
-
-void initProtocolMessagesValidator() {
-
-    if (isProtocolInitialized)
-        return;
-
-    char patternPayload[] = "(<payload>[a-zA-Z][0-9a-zA-Z\\t ]+[a-zA-Z]<payload>)?";
-    char patternHeader[] = "<id>[0-9]<id><src>[0-9]{1,2}<src><target>[0-9]{1,2}<target>";
-    
-    strcat(protocolPattern, NET_TAG_MSG);
-    strcat(protocolPattern, patternHeader);
-    strcat(protocolPattern, patternPayload);
-    strcat(protocolPattern, NET_TAG_MSG);
-
-    isProtocolInitialized = true;
-}
-
-bool validateReceivedMsg(const char *message) {
-    initProtocolMessagesValidator();
-    return strRegexMatch(protocolPattern, message, NULL);
-}
-
-void testBatch(const char **messages, const int nTests, const bool isValidMessage) {
-
-    char testType[15] = "";
-    strcpy(testType, isValidMessage ? "Good\0" : "Bad\0");
-    
-    for (int i = 0; i < nTests; i++) {
-        
-        printf("\nTesting %s pattern:\n\t\"%s\"...", testType, messages[i]);
-        const bool passedValidation = validateReceivedMsg(messages[i]);
-        const bool isSuccess = (passedValidation && isValidMessage) || (!passedValidation && !isValidMessage);
-        
-        char resultMsg[10];
-        strcpy(resultMsg, isSuccess ? "OK" : "FAILED!");
-        printf("\n\tTest %s", resultMsg);
-    }
-
-    printf("\n");
-}
-
-void testProtocolValidation() {
-
-    printf("\n\n>>>>>>>>>> Tests for regex >>>>>>>>>>\n\n");
-
-    /* ---------------- Good ----------------  */
-    bool isValid = true;
-    
-    int nTests = 2;
-    const char *goodMessages[] = {
-        "<msg><id>1<id><src>2<src><target>3<target><msg>",
-        "<msg><id>1<id><src>2<src><target>3<target><payload>Loren Ipsun 123 Dolur<payload><msg>"
-    };
-    testBatch(goodMessages, nTests, isValid);
-    printf("\n");
-
-
-    /* - Bad: Wrong Tag names ---------------  */
-    isValid = false;
-    
-    nTests = 6;
-    const char *badMessagesWrongTag[] = {
-        "<message><id>1<id><src>2<src><target>3<target><payload>Loren Ipsun 123 Dolur<payload><message>",
-        "<msg><id>1<id><source>2<source><target>3<target><payload>Loren Ipsun 123 Dolur<payload><msg>",
-        "<msg><id>1<id><src>2<src><target>3<target><payload>Loren Ipsun 123 Dolur<payload><msg/>",
-        "<msg><id>1<id><src>2<src><target>3<target><payload>Loren Ipsun 123 Dolur<payload/><msg>",
-        "<msg><id>1<id><src>2<src><target>3<target/><payload>Loren Ipsun 123 Dolur<payload><msg>",
-        "<msg><id>1<id><src>2<src/><target>3<target><payload>Loren Ipsun 123 Dolur<payload><msg>"
-    };
-    testBatch(badMessagesWrongTag, nTests, isValid);
-    printf("\n");
-
-
-    /* - Bad: Missing close tags ------------  */
-    nTests = 6;
-    const char *badMessagesClosingTags[] = {
-        "<msg><id>1<id><src>2<src><target>3<target><payload>Loren Ipsun 123 Dolur<payload>",
-        "<msg><id>1<id><src>2<src><target>3<target><payload>Loren Ipsun 123 Dolur<msg>",
-        "<msg><id>1<id><src>2<src><target>3<target>Loren Ipsun 123 Dolur<payload><msg>",
-        "<msg><id>1<id><src>2<src><target>3<payload>Loren Ipsun 123 Dolur<payload><msg>",
-        "<msg><id>1<id><src>2<target>3<target><payload>Loren Ipsun 123 Dolur<payload><msg>",
-        "<msg><id>1<src>2<src><target>3<target><payload>Loren Ipsun 123 Dolur<payload><msg>"
-    };
-    testBatch(badMessagesClosingTags, nTests, isValid);
-    printf("\n");
-
-    /* - Bad: Missing required fields -------  */
-    nTests = 4;
-    const char *badMessagesMissingFields[] = {
-        "<msg><id><id><src>2<src><target>3<target><msg>",
-        "<msg><id>1<id><src><src><target>3<target><msg>",
-        "<msg><id>1<id><src>2<src><target><target><msg>",
-        "<msg><id>1<id><src>2<src><target>3<target><payload><payload><msg>",
-    };
-    testBatch(badMessagesMissingFields, nTests, isValid);
-    printf("\n");
-
-    /* - Bad: Extra characters --------------  */
-    nTests = 5;
-    const char *badMessagesExtraChars[] = {
-        "<msg><id>123<id><src>2<src><target>3<target><msg>",
-        "<msg><id>1<id><src>123<src><target>3<target><msg>",
-        "<msg><id>1<id><src>2<src><target>123<target><msg>",
-        "<msg><id>1<id><src>2<src><target>3<target><payload>Loren Ipsun Dolur2<payload><msg>",
-        "<msg><id>1<id><src>2<src><target>3<target><payload>1Loren Ipsun Dolur2<payload><msg>"
-    };
-    testBatch(badMessagesMissingFields, nTests, isValid);
-    printf("\n");
-
-    /* - Bad: Invalid characters ------------  */
-    nTests = 3;
-    const char *badMessagesInvalidChars[] = {
-        "<msg><id>1a<id><src>2<src><target>3<target><msg>",
-        "<msg><id>1<id><src>2b<src><target>3<target><msg>",
-        "<msg><id>1<id><src>2<src><target>3c<target><msg>"
-    };
-    testBatch(badMessagesInvalidChars, nTests, isValid);
-    printf("\n");
-
-
-    /* - Bad: Unexpected spaces -------------  */
-    nTests = 3;
-    const char *badMessagesSpaces[] = {
-        "<msg><id>1 <id><src>2<src><target>3<target><msg>",
-        "<msg><id>1<id><src> <src><target>3<target><msg>",
-        "<msg><id>1<id><src>2<src><target>3 <target><msg>"
-    };
-    testBatch(badMessagesSpaces, nTests, isValid);
-    printf("\n");
-}
-
-
-
-// char buffer[BUF_SIZE] = "";
-// char payload[MAX_PAYLOAD_SIZE] = "Loren Ipsun Dolur";
-// const Message message = { 1, 2, 3, (void *)payload };
-
-// buildMessageToSend(message, buffer);
-// printf("\nBuilt message: '%s'\n", buffer);
-
-// testProtocolValidation();
 
 int main(int argc, char **argv) {
 

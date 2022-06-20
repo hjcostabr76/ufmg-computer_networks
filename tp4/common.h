@@ -11,14 +11,11 @@
  */
 
 #define DEBUG_ENABLE true
-#define BUF_SIZE 500
-#define PORT_DEFAULT 51511
 
-#define MAX_CONNECTIONS 15
+#define BUF_SIZE 1024
+
 #define TIMEOUT_CONN_SECS 15
 #define TIMEOUT_TRANSFER_SECS 15
-
-#define CMD_COUNT 3
 
 #define ASCII_NUM_FIRST 48
 #define ASCII_NUM_LAST 57
@@ -27,9 +24,20 @@
 #define ASCII_CHAR_UC_FIRST 65
 #define ASCII_CHAR_UC_LAST 90
 
-extern const char* EQUIP_IDS[MAX_CONNECTIONS];
+#define CMD_COUNT 3
+#define PORT_DEFAULT 51511
 
+#define MAX_PAYLOAD_SIZE 1024 - 1 - 2 - 2 // [buffer size] - [id_msg] - [id_src] - [id_target]
+#define MAX_CONNECTIONS 15
+
+extern const char* EQUIP_IDS[MAX_CONNECTIONS];
 extern const char* CMD_NAME[CMD_COUNT];
+
+extern const char* NET_TAG_MSG;
+extern const char* NET_TAG_ID;
+extern const char* NET_TAG_SRC;
+extern const char* NET_TAG_TARGET;
+extern const char* NET_TAG_PAYLOAD;
 
 typedef enum { CMD_CODE_KILL, CMD_CODE_LIST, CMD_CODE_INFO } CommandCodeEnum;
 
@@ -99,7 +107,7 @@ bool netSetSocketAddrString(const int sock, char *addrStr);
 
 // int comValidateLCaseString(const char *string, const int strLength);
 bool strReadFromStdIn(char *buffer, size_t buffLength);
-// bool strRegexMatch(const char* pattern, const char* str, char errorMsg[100]);
+bool strRegexMatch(const char* pattern, const char* str, char errorMsg[100]);
 bool strEndsWith(const char *target, const char *suffix);
 // bool strStartsWith(const char *target, const char *prefix);
 bool strIsNumeric(const char *string);
