@@ -73,6 +73,7 @@ typedef struct {
     int source;
     int target;
     void *payload;
+    char *payloadText;
 } Message;
 
 /**

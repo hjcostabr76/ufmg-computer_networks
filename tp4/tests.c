@@ -18,23 +18,21 @@ typedef struct {
     char *messageText;
     Message expectedResult;
     bool isVerbose;
+    bool isPayloadFloat;
+    bool isPayloadInt;
+    bool isPayloadIntList;
+    int payloadListLength;
 } ExtractionTest;
 
 
 bool setMessageFromText(const char *text, Message *message) {
 
-    int begin = 0;
-    int end = 0;
-    
     const int msgSize = (int)strlen(text);
     char *temp = (char *)malloc(msgSize);
     temp[0] = '\0';
-
-    // Msg
-    // if (!strSetDelimitedTextBounds(text, NET_TAG_MSG, &begin, &end))
-    //     return false;
-    // strGetSubstring(text, temp, begin, end);
-    // strcpy(temp, text);
+    
+    int begin = 0;
+    int end = 0;
 
     // Id
     if (!strSetDelimitedTextBounds(text, NET_TAG_ID, &begin, &end))
@@ -55,11 +53,19 @@ bool setMessageFromText(const char *text, Message *message) {
     message->target = atoi(temp);
 
     // Payload
-    // TODO: 2022-06-21 - How will we do this??
-    if (!strSetDelimitedTextBounds(text, NET_TAG_PAYLOAD, &begin, &end))
-        return false;
-    strSubstring(text, temp, begin, end);
+    if (!strSetDelimitedTextBounds(text, NET_TAG_PAYLOAD, &begin, &end)) {
+        message->payload = NULL;
+        message->payloadText = NULL;
+        return true; // NOTE: Payload is optional!
+    }
 
+    strSubstring(text, temp, begin, end);
+    message->payloadText = (char *)malloc(strlen(temp));
+    strcpy(message->payloadText, temp);
+    
+    /**
+     * TODO: 2022-06-21 - Parse according to message type...
+     */
     message->payload = (char *)malloc(strlen(temp));
     strcpy(message->payload, temp);
 
@@ -231,7 +237,57 @@ TestResult testMsgExtractionBatch(const ExtractionTest tests[], const int nTests
         Message message;
         bool isParsingOk = setMessageFromText(test.messageText, &message);
         
-        // Test result
+        // Validate result payload
+        const bool isValidPayloadTxt = (
+            (test.expectedResult.payloadText == NULL && message.payloadText == NULL)
+            || (
+                test.expectedResult.payloadText != NULL
+                && message.payloadText != NULL
+                && strcmp(message.payloadText, test.expectedResult.payloadText) == 0
+            )
+        );
+
+        bool isValidEmptyPayload = false;
+        bool isValidPayloadFloat = false;
+        bool isValidPayloadInt = false;
+        bool isValidPayloadIntList = false;
+        bool isValidPayloadIntString = false;
+
+        if (message.payload == NULL) // Test for is there anything to validate
+            isValidEmptyPayload = test.expectedResult.payload == NULL;
+        
+        else if (test.isPayloadFloat) // Test for Float
+            isValidPayloadFloat = *(float *)message.payload == *(float *)test.expectedResult.payload;
+        
+        else if (test.isPayloadInt) // Test for Integer
+            isValidPayloadInt = *(int *)message.payload == *(int *)test.expectedResult.payload;
+        
+        else if (test.isPayloadIntList) { // Test for List of integers
+
+            int *aux = (int *)malloc(test.payloadListLength * sizeof(int));
+            memset(aux, 0, test.payloadListLength);
+            memcpy(aux, message.payload, test.payloadListLength);
+
+            for (int i = 0; i < test.payloadListLength; i++) {
+                isValidPayloadIntList = aux[i] == ((int *)test.expectedResult.payload)[i];
+                if (!isValidPayloadIntList)
+                    break;
+            }
+        } else // Test for string
+            isValidPayloadIntString = strcmp(message.payload, test.expectedResult.payload) == 0;
+
+        const bool isValidPayload = (
+            isValidPayloadTxt
+            && (
+                isValidEmptyPayload
+                || isValidPayloadFloat
+                || isValidPayloadInt
+                || isValidPayloadIntList
+                || isValidPayloadIntString
+            )
+        );
+
+        // Validate the whole thing
         const bool isSuccess = (
             (!isParsingOk && !isValidCase)
             || (
@@ -240,20 +296,9 @@ TestResult testMsgExtractionBatch(const ExtractionTest tests[], const int nTests
                 && message.id == test.expectedResult.id
                 && message.source == test.expectedResult.source
                 && message.target == test.expectedResult.target
-                && (
-                    (message.payload == NULL && test.expectedResult.payload == NULL)
-                    || (
-                        message.payload != NULL
-                        && test.expectedResult.payload != NULL
-                        && strcmp(message.payload, test.expectedResult.payload) == 0
-                    )
-                )
+                && isValidPayload
             )
         );
-        
-        if (!isSuccess) {
-            nFailures++;
-        }
 
         // Exhibit result
         char resultMsg[10];
@@ -263,26 +308,67 @@ TestResult testMsgExtractionBatch(const ExtractionTest tests[], const int nTests
         const bool showDetails = test.isVerbose || !isSuccess;
         if (showDetails) {
             
+            // Print actual header
             printf("\n\n\t--- What came: -------------------");
             printf("\n\tmessage.id: '%d'", message.id);
             printf("\n\tmessage.source: '%d'", message.source);
             printf("\n\tmessage.target: '%d'", message.target);
-
-            if (message.payload == NULL)
-                printf("\n\tmessage.payload: 'NULL'");
-            else
-                printf("\n\tmessage.payload: '%s'", (char *)message.payload);
             
+            if (isValidPayloadTxt)
+                printf("\n\tmessage.payloadText: '%s'", message.payloadText);
+            else
+                printf("\n\tmessage.payloadText: 'BAD STUFF'");
+
+            // Print actual payload
+            if (message.payload == NULL) // Empty
+                printf("\n\tmessage.payload: 'NULL'");
+            
+            else if (!isValidPayload)
+                printf("\n\tmessage.payload: 'BAD STUFF'");
+
+            else if (test.isPayloadFloat) // Float
+                printf("\n\tmessage.payload: '%.2f'", *(float *)message.payload);
+
+            else if (test.isPayloadInt) // Integer
+                printf("\n\tmessage.payload: '%d'", *(int *)message.payload);
+
+            else if (test.isPayloadIntList) { // List of integers
+                printf("\n\tmessage.payload: ");
+                for (int i = 0; i < test.payloadListLength; i++)
+                    printf("'%d'; ", ((int *)message.payload)[i]);
+
+            } else // String
+                printf("\n\tmessage.payload: '%s'", (char *)message.payload);
+
+            // Print expected header
             printf("\n\n\t--- What was supposed to come: ---");
             printf("\n\ttest.expectedResult.id: '%d'", test.expectedResult.id);
             printf("\n\ttest.expectedResult.source: '%d'", test.expectedResult.source);
             printf("\n\ttest.expectedResult.target: '%d'", test.expectedResult.target);
+            printf("\n\ttest.expectedResult.payloadText: '%s'", test.expectedResult.payloadText);
             
-            if (test.expectedResult.payload == NULL)
+            // Print expected payload
+            if (test.expectedResult.payload == NULL) // Empty
                 printf("\n\ttest.expectedResult.payload: 'NULL'");
-            else
+            
+            else if (test.isPayloadFloat) // Float
+                printf("\n\ttest.expectedResult.payload: '%.2f'", *(float *)test.expectedResult.payload);
+
+            else if (test.isPayloadInt) // Integer
+                printf("\n\ttest.expectedResult.payload: '%d'", *(int *)test.expectedResult.payload);
+
+            else if (test.isPayloadIntList) { // List of integers
+                printf("\n\ttest.expectedResult.payload: ");
+                for (int i = 0; i < test.payloadListLength; i++)
+                    printf("'%d'; ", ((int *)test.expectedResult.payload)[i]);
+
+            } else // String
                 printf("\n\ttest.expectedResult.payload: '%s'", (char *)test.expectedResult.payload);
+
+            // Compute result
             printf("\n");
+            if (!isSuccess)
+                nFailures++;
         }
     }
 
@@ -313,22 +399,59 @@ TestResult testMsgExtraction(void) {
     
     ExtractionTest goodTests[10];
     int i = 0;
+    int j = -1;
 
     goodTests[i].isVerbose = isVerbose;
     goodTests[i].messageText = "<msg><id>1<id><src>2<src><target>3<target><msg>";
+    
     goodTests[i].expectedResult.id = 1;
     goodTests[i].expectedResult.source = 2;
     goodTests[i].expectedResult.target = 3;
+
+    goodTests[i].expectedResult.payloadText = NULL;
     goodTests[i].expectedResult.payload = NULL;
+    goodTests[i].isPayloadInt = false;
+    goodTests[i].isPayloadFloat = false;
+    goodTests[i].isPayloadIntList = false;
+    goodTests[i].payloadListLength = 0;
     i++;
 
     /* - New Test ------------- */
     goodTests[i].isVerbose = isVerbose;
     goodTests[i].messageText = "<msg><id>1<id><src>2<src><target>3<target><payload>Loren Ipsun 123 Dolur<payload><msg>";
+    
     goodTests[i].expectedResult.id = 1;
     goodTests[i].expectedResult.source = 2;
     goodTests[i].expectedResult.target = 3;
+    
     goodTests[i].expectedResult.payload = "Loren Ipsun 123 Dolur";
+    goodTests[i].expectedResult.payloadText = "Loren Ipsun 123 Dolur";
+    goodTests[i].isPayloadInt = false;
+    goodTests[i].isPayloadFloat = false;
+    goodTests[i].isPayloadIntList = false;
+    goodTests[i].payloadListLength = 0;
+    i++;
+
+    /* - New Test ------------- */
+    j = -1;
+
+    goodTests[i].isVerbose = isVerbose;
+    goodTests[i].messageText = "<msg><id>9<id><src>11<src><target>13<target><payload>1,13,15<payload><msg>";
+    
+    goodTests[i].expectedResult.id = 9;
+    goodTests[i].expectedResult.source = 11;
+    goodTests[i].expectedResult.target = 13;
+    
+    goodTests[i].expectedResult.payloadText = "1,13,15";
+    goodTests[i].expectedResult.payload = (int *)malloc(3 * sizeof(int));
+    ((int *)goodTests[i].expectedResult.payload)[++j] = 1;
+    ((int *)goodTests[i].expectedResult.payload)[++j] = 11;
+    ((int *)goodTests[i].expectedResult.payload)[++j] = 13;
+
+    goodTests[i].isPayloadInt = false;
+    goodTests[i].isPayloadFloat = false;
+    goodTests[i].isPayloadIntList = true;
+    goodTests[i].payloadListLength = j;
     i++;
 
     /* - Test em'all! --------- */
