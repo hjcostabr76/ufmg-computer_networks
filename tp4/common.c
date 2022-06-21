@@ -140,6 +140,57 @@ void buildMessageToSend(const Message msg, char *buffer) {
 	strcat(buffer, NET_TAG_MSG); // Message
 }
 
+bool setContentTagBounds(const char* src, const char *delimiter, int *begin, int *end) {
+
+    // Validate
+    if (begin == NULL || end == NULL) {
+        comDebugStep("Give something to work with (null values for begin and/or end)...");
+        return false;
+    }
+
+    const int msgSize = strlen(src);
+    const int delimiterSize = strlen(delimiter);
+
+    if (!msgSize || !delimiterSize || delimiterSize > msgSize) {
+        char msg[60] = "";
+        sprintf(msg, "[Error!] 'msgSize' / 'delimiterSize' nonsense (%d / %d)...", msgSize, delimiterSize);
+        comDebugStep(msg);
+        return false;
+    }
+
+    // Seek for the message we're looking for
+    *begin = -1;
+    *end = -1;
+
+    int i = 0;
+    char *temp = (char *)malloc(msgSize);
+    temp[0] = '\0';
+
+    do {
+
+        // Check for a match
+        strGetSubstring(src, temp, i, msgSize);
+        
+        const bool isMatch = strStartsWith(temp, delimiter);
+        if (!isMatch) {
+            i += 1;
+            continue;
+        }
+        
+        // Update search state
+        if (*begin >= 0) {
+            *end = i;
+            break;
+        }
+        
+        i += delimiterSize;
+        *begin = i;
+
+    } while (i < msgSize);
+
+    return (*begin >= 0 && *end > *begin);
+}
+
 /**
  * ------------------------------------------------
  * == NETWORK =====================================

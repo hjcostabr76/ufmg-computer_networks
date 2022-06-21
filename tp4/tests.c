@@ -14,56 +14,58 @@ typedef struct {
     TestResult tests[20];
 } TestBatchResult;
 
-bool setContentTagBounds(const char* src, const char *delimiter, int *begin, int *end) {
+typedef struct {
+    char *messageText;
+    Message expectedResult;
+    bool isVerbose;
+} ExtractionTest;
 
-    // Validate
-    if (begin == NULL || end == NULL) {
-        comDebugStep("Give something to work with (null values for begin and/or end)...");
-        return false;
-    }
 
-    const int msgSize = strlen(src);
-    const int delimiterSize = strlen(delimiter);
+bool setMessageFromText(const char *text, Message *message) {
 
-    if (!msgSize || !delimiterSize || delimiterSize > msgSize) {
-        char msg[60] = "";
-        sprintf(msg, "[Error!] 'msgSize' / 'delimiterSize' nonsense (%d / %d)...", msgSize, delimiterSize);
-        comDebugStep(msg);
-        return false;
-    }
-
-    // Seek for the message we're looking for
-    *begin = -1;
-    *end = -1;
-
-    int i = 0;
+    int begin = 0;
+    int end = 0;
+    
+    const int msgSize = (int)strlen(text);
     char *temp = (char *)malloc(msgSize);
     temp[0] = '\0';
 
-    do {
+    // Msg
+    // if (!setContentTagBounds(text, NET_TAG_MSG, &begin, &end))
+    //     return false;
+    // strGetSubstring(text, temp, begin, end);
+    // strcpy(temp, text);
 
-        // Check for a match
-        strGetSubstring(src, temp, i, msgSize);
-        
-        const bool isMatch = strStartsWith(temp, delimiter);
-        if (!isMatch) {
-            i += 1;
-            continue;
-        }
-        
-        // Update search state
-        if (*begin >= 0) {
-            *end = i;
-            break;
-        }
-        
-        i += delimiterSize;
-        *begin = i;
+    // Id
+    if (!setContentTagBounds(text, NET_TAG_ID, &begin, &end))
+        return false;
+    strGetSubstring(text, temp, begin, end);
+    message->id = atoi(temp);
 
-    } while (i < msgSize);
+    // Src
+    if (!setContentTagBounds(text, NET_TAG_SRC, &begin, &end))
+        return false;
+    strGetSubstring(text, temp, begin, end);
+    message->source = atoi(temp);
 
-    return (*begin >= 0 && *end > *begin);
+    // target
+    if (!setContentTagBounds(text, NET_TAG_TARGET, &begin, &end))
+        return false;
+    strGetSubstring(text, temp, begin, end);
+    message->target = atoi(temp);
+
+    // Payload
+    // TODO: 2022-06-21 - How will we do this??
+    if (!setContentTagBounds(text, NET_TAG_PAYLOAD, &begin, &end))
+        return false;
+    strGetSubstring(text, temp, begin, end);
+
+    message->payload = (char *)malloc(strlen(temp));
+    strcpy(message->payload, temp);
+
+    return true;
 }
+
 
 TestResult testMsgPatternValidationBatch(const char **messages, const int nTests, const bool isValidMessage, const char *title) {
 
@@ -213,58 +215,129 @@ TestResult testMsgPatternValidation(void) {
     return finalResult;
 }
 
-typedef struct {
-    char *message;
-    char *title;
-    Message expectedResult;
-    bool isValid;
-} ExtractionTest;
+TestResult testMsgExtractionBatch(const ExtractionTest tests[], const int nTests, const bool isValidCase, const char *title) {
 
-
-bool setMessageFromText(const char *text, Message *message) {
-
-    int begin = 0;
-    int end = 0;
+    char testType[15] = "";
+    strcpy(testType, isValidCase ? "Good\0" : "Bad\0");
+    printf("\n\n----- New Test: %s ------------------------------", title);
     
-    const int msgSize = (int)strlen(text);
-    char *temp = (char *)malloc(msgSize);
-    temp[0] = '\0';
+    int nFailures = 0;
+    for (int i = 0; i < nTests; i++) {
+        
+        const ExtractionTest test = tests[i];
+        printf("\nTesting %s pattern:\n\"%s\"...", testType, test.messageText);
+        
+        // Run extraction
+        Message message;
+        bool isParsingOk = setMessageFromText(test.messageText, &message);
+        
+        // Test result
+        const bool isSuccess = (
+            (!isParsingOk && !isValidCase)
+            || (
+                isParsingOk
+                && isValidCase
+                && message.id == test.expectedResult.id
+                && message.source == test.expectedResult.source
+                && message.target == test.expectedResult.target
+                && (
+                    (message.payload == NULL && test.expectedResult.payload == NULL)
+                    || (
+                        message.payload != NULL
+                        && test.expectedResult.payload != NULL
+                        && strcmp(message.payload, test.expectedResult.payload) == 0
+                    )
+                )
+            )
+        );
+        
+        if (!isSuccess) {
+            nFailures++;
+        }
 
-    // Msg
-    // if (!setContentTagBounds(text, NET_TAG_MSG, &begin, &end))
-    //     return false;
-    // strGetSubstring(text, temp, begin, end);
-    // strcpy(temp, text);
+        // Exhibit result
+        char resultMsg[10];
+        strcpy(resultMsg, isSuccess ? "ok" : "FAILED!");
+        printf("\n[test %s]", resultMsg);
 
-    // Id
-    if (!setContentTagBounds(text, NET_TAG_ID, &begin, &end))
-        return false;
-    strGetSubstring(text, temp, begin, end);
-    message->id = atoi(temp);
+        const bool showDetails = test.isVerbose || !isSuccess;
+        if (showDetails) {
+            
+            printf("\n\n\t--- What came: -------------------");
+            printf("\n\tmessage.id: '%d'", message.id);
+            printf("\n\tmessage.source: '%d'", message.source);
+            printf("\n\tmessage.target: '%d'", message.target);
 
-    // Src
-    if (!setContentTagBounds(text, NET_TAG_SRC, &begin, &end))
-        return false;
-    strGetSubstring(text, temp, begin, end);
-    message->source = atoi(temp);
+            if (message.payload == NULL)
+                printf("\n\tmessage.payload: 'NULL'");
+            else
+                printf("\n\tmessage.payload: '%s'", (char *)message.payload);
+            
+            printf("\n\n\t--- What was supposed to come: ---");
+            printf("\n\ttest.expectedResult.id: '%d'", test.expectedResult.id);
+            printf("\n\ttest.expectedResult.source: '%d'", test.expectedResult.source);
+            printf("\n\ttest.expectedResult.target: '%d'", test.expectedResult.target);
+            
+            if (test.expectedResult.payload == NULL)
+                printf("\n\ttest.expectedResult.payload: 'NULL'");
+            else
+                printf("\n\ttest.expectedResult.payload: '%s'", (char *)test.expectedResult.payload);
+            printf("\n");
+        }
+    }
 
-    // target
-    if (!setContentTagBounds(text, NET_TAG_SRC, &begin, &end))
-        return false;
-    strGetSubstring(text, temp, begin, end);
-    message->target = atoi(temp);
+    printf("\n");
 
-    // Payload
-    /**
-     * TODO: 2022-06-21 - How will we do this??
-     */
+    if (!nFailures)
+        printf("-------------------- ALL TESTS PASSED! ------------------\n");
+    else
+        printf("-------------------- %d TEST(S) FAILED --------------------\n", nFailures);
     
-    // if (!setContentTagBounds(messageText, NET_TAG_SRC, &begin, &end))
-    //     return false;
-    // strGetSubstring(messageText, temp, begin, end);
-    // result->target = atoi(temp);
+    const TestResult result = { nTests, nFailures };
+    return result;
+}
 
-    return true;
+TestResult testMsgExtraction(void) {
+
+    printf("\n");
+    printf("\n>> ---------------------------------------------------------------------------- >>");
+    printf("\n>> TEST: Extract message from text -------------------------------------------- >>");
+    printf("\n>> ---------------------------------------------------------------------------- >>");
+    
+    TestResult aux = { 0, 0 };
+    TestResult finalResult = { 0, 0 };
+
+    /* - New Test ------------- */
+    bool isValid = true;
+    bool isVerbose = true;
+    
+    ExtractionTest goodTests[10];
+    int i = 0;
+
+    goodTests[i].isVerbose = isVerbose;
+    goodTests[i].messageText = "<msg><id>1<id><src>2<src><target>3<target><msg>";
+    goodTests[i].expectedResult.id = 1;
+    goodTests[i].expectedResult.source = 2;
+    goodTests[i].expectedResult.target = 3;
+    goodTests[i].expectedResult.payload = NULL;
+    i++;
+
+    /* - New Test ------------- */
+    goodTests[i].isVerbose = isVerbose;
+    goodTests[i].messageText = "<msg><id>1<id><src>2<src><target>3<target><payload>Loren Ipsun 123 Dolur<payload><msg>";
+    goodTests[i].expectedResult.id = 1;
+    goodTests[i].expectedResult.source = 2;
+    goodTests[i].expectedResult.target = 3;
+    goodTests[i].expectedResult.payload = "Loren Ipsun 123 Dolur";
+    i++;
+
+    /* - Test em'all! --------- */
+    aux = testMsgExtractionBatch(goodTests, i, isValid, "Good");
+    finalResult.nFailures += aux.nFailures;
+    finalResult.nTests += aux.nTests;
+    printf("\n");
+    
+    return finalResult;
 }
 
 int main() {
@@ -276,28 +349,33 @@ int main() {
 
     // Run test groups
     TestResult acc = { 0, 0 };
-    // TestResult aux;
+    TestResult aux;
     int nGroups = 0;
 
-    nGroups++;
-    const char tag[] = "<test>";
-    const char message[] = "<test>Loren Ipsun Dolur<test>";
+    // nGroups++;
+    // const char tag[] = "<test>";
+    // const char message[] = "<test>Loren Ipsun Dolur<test>";
 
-    int begin = 0;
-    int end = 0;
-    bool isSuccessTemp = setContentTagBounds(message, tag, &begin, &end);
+    // int begin = 0;
+    // int end = 0;
+    // bool isSuccessTemp = setContentTagBounds(message, tag, &begin, &end);
     
-    char content[100] = "";
-    strGetSubstring(message, content, begin, end);
-    printf("\nbeing: '%d', end: '%d', content: '%s'\n", begin, end, content);
+    // char content[100] = "";
+    // strGetSubstring(message, content, begin, end);
+    // printf("\nbeing: '%d', end: '%d', content: '%s'\n", begin, end, content);
 
-    acc.nTests += 1;
-    acc.nFailures += !isSuccessTemp;    
+    // acc.nTests += 1;
+    // acc.nFailures += !isSuccessTemp;    
 
     // nGroups++;
     // aux = testMsgPatternValidation();
     // acc.nTests += aux.nTests;
     // acc.nFailures += aux.nFailures;
+
+    nGroups++;
+    aux = testMsgExtraction();
+    acc.nTests += aux.nTests;
+    acc.nFailures += aux.nFailures;
 
     // Notify end result
     bool isSuccess = acc.nFailures == 0;

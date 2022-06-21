@@ -89,6 +89,7 @@ void comLogErrorAndDie(char *msg);
 /** -- MAIN ------------- */
 
 bool validateReceivedMsg(const char *message);
+bool setContentTagBounds(const char* src, const char *delimiter, int *begin, int *end);
 // Equipment getEmptyEquipment(void);
 // Command getGenericCommand(void);
 // Command getEmptyCommand(CmdCodeEnum code);
