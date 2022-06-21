@@ -14,9 +14,14 @@ typedef struct {
     TestResult tests[20];
 } TestBatchResult;
 
-bool setContentBetweenTag(const char* src, char *dest, const char *delimiter) {
+bool setContentTagBounds(const char* src, const char *delimiter, int *begin, int *end) {
 
     // Validate
+    if (begin == NULL || end == NULL) {
+        comDebugStep("Give something to work with (null values for begin and/or end)...");
+        return false;
+    }
+
     const int msgSize = strlen(src);
     const int delimiterSize = strlen(delimiter);
 
@@ -28,8 +33,8 @@ bool setContentBetweenTag(const char* src, char *dest, const char *delimiter) {
     }
 
     // Seek for the message we're looking for
-    int begin = -1;
-    int end = -1;
+    *begin = -1;
+    *end = -1;
 
     int i = 0;
     char *temp = (char *)malloc(msgSize);
@@ -47,23 +52,17 @@ bool setContentBetweenTag(const char* src, char *dest, const char *delimiter) {
         }
         
         // Update search state
-        if (begin >= 0) {
-            end = i;
+        if (*begin >= 0) {
+            *end = i;
             break;
         }
         
-        begin = i;
         i += delimiterSize;
+        *begin = i;
 
     } while (i < msgSize);
 
-    // Validate result
-    if (begin < 0 || end <= begin)
-        return false;
-
-    // We're good :)
-    strGetSubstring(src, dest, begin, end);
-    return true;
+    return (*begin >= 0 && *end > *begin);
 }
 
 TestResult testProtocolFormattedMessagesBatch(const char **messages, const int nTests, const bool isValidMessage, const char *title) {
@@ -227,12 +226,16 @@ int main() {
     int nGroups = 0;
 
     nGroups++;
-    char content[100] = "";
     const char tag[] = "<test>";
     const char message[] = "<test>Loren Ipsun Dolur<test>";
 
-    bool isSuccessTemp = setContentBetweenTag(message, content, tag);
-    printf("\ncontent: '%s'\n", content);
+    int begin = 0;
+    int end = 0;
+    bool isSuccessTemp = setContentTagBounds(message, tag, &begin, &end);
+    
+    char content[100] = "";
+    strGetSubstring(message, content, begin, end);
+    printf("\nbeing: '%d', end: '%d', content: '%s'\n", begin, end, content);
 
     acc.nTests += 1;
     acc.nFailures += !isSuccessTemp;    
