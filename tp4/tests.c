@@ -14,7 +14,59 @@ typedef struct {
     TestResult tests[20];
 } TestBatchResult;
 
-TestResult testBatch(const char **messages, const int nTests, const bool isValidMessage, const char *title) {
+bool setContentBetweenTag(const char* src, char *dest, const char *delimiter) {
+
+    // Validate
+    const int msgSize = strlen(src);
+    const int delimiterSize = strlen(delimiter);
+
+    if (!msgSize || !delimiterSize || delimiterSize > msgSize) {
+        char msg[60] = "";
+        sprintf(msg, "[Error!] 'msgSize' / 'delimiterSize' nonsense (%d / %d)...", msgSize, delimiterSize);
+        comDebugStep(msg);
+        return false;
+    }
+
+    // Seek for the message we're looking for
+    int begin = -1;
+    int end = -1;
+
+    int i = 0;
+    char *temp = (char *)malloc(msgSize);
+    temp[0] = '\0';
+
+    do {
+
+        // Check for a match
+        strGetSubstring(src, temp, i, msgSize);
+        
+        const bool isMatch = strStartsWith(temp, delimiter);
+        if (!isMatch) {
+            i += 1;
+            continue;
+        }
+        
+        // Update search state
+        if (begin >= 0) {
+            end = i;
+            break;
+        }
+        
+        begin = i;
+        i += delimiterSize;
+
+    } while (i < msgSize);
+
+    // Validate result
+    if (begin < 0 || end <= begin)
+        return false;
+
+    // We're good :)
+    strGetSubstring(src, dest, begin, end);
+    return true;
+}
+
+TestResult testProtocolFormattedMessagesBatch(const char **messages, const int nTests, const bool isValidMessage, const char *title) {
 
     char testType[15] = "";
     strcpy(testType, isValidMessage ? "Good\0" : "Bad\0");
@@ -65,7 +117,7 @@ TestResult testProtocolFormattedMessages(void) {
         "<msg><id>1<id><src>2<src><target>3<target><msg>",
         "<msg><id>1<id><src>2<src><target>3<target><payload>Loren Ipsun 123 Dolur<payload><msg>"
     };
-    aux = testBatch(goodMessages, nPatterns, isValid, "Good");
+    aux = testProtocolFormattedMessagesBatch(goodMessages, nPatterns, isValid, "Good");
     finalResult.nFailures += aux.nFailures;
     finalResult.nTests += aux.nTests;
     printf("\n");
@@ -83,7 +135,7 @@ TestResult testProtocolFormattedMessages(void) {
         "<msg><id>1<id><src>2<src><target>3<target/><payload>Loren Ipsun 123 Dolur<payload><msg>",
         "<msg><id>1<id><src>2<src/><target>3<target><payload>Loren Ipsun 123 Dolur<payload><msg>"
     };
-    aux = testBatch(badMessagesWrongTag, nPatterns, isValid, "Bad: Wrong Tag names");
+    aux = testProtocolFormattedMessagesBatch(badMessagesWrongTag, nPatterns, isValid, "Bad: Wrong Tag names");
     finalResult.nFailures += aux.nFailures;
     finalResult.nTests += aux.nTests;
     printf("\n");
@@ -99,7 +151,7 @@ TestResult testProtocolFormattedMessages(void) {
         "<msg><id>1<id><src>2<target>3<target><payload>Loren Ipsun 123 Dolur<payload><msg>",
         "<msg><id>1<src>2<src><target>3<target><payload>Loren Ipsun 123 Dolur<payload><msg>"
     };
-    aux = testBatch(badMessagesClosingTags, nPatterns, isValid, "Bad: Missing close tags");
+    aux = testProtocolFormattedMessagesBatch(badMessagesClosingTags, nPatterns, isValid, "Bad: Missing close tags");
     finalResult.nFailures += aux.nFailures;
     finalResult.nTests += aux.nTests;
     printf("\n");
@@ -113,7 +165,7 @@ TestResult testProtocolFormattedMessages(void) {
         "<msg><id>1<id><src>2<src><target><target><msg>",
         "<msg><id>1<id><src>2<src><target>3<target><payload><payload><msg>",
     };
-    aux = testBatch(badMessagesMissingFields, nPatterns, isValid, "Bad: Missing required fields");
+    aux = testProtocolFormattedMessagesBatch(badMessagesMissingFields, nPatterns, isValid, "Bad: Missing required fields");
     finalResult.nFailures += aux.nFailures;
     finalResult.nTests += aux.nTests;
     printf("\n");
@@ -128,7 +180,7 @@ TestResult testProtocolFormattedMessages(void) {
         "<msg><id>1<id><src>2<src><target>3<target><payload>Loren Ipsun Dolur2<payload><msg>",
         "<msg><id>1<id><src>2<src><target>3<target><payload>1Loren Ipsun Dolur2<payload><msg>"
     };
-    aux = testBatch(badMessagesExtraChars, nPatterns, isValid, "Bad: Extra characters");
+    aux = testProtocolFormattedMessagesBatch(badMessagesExtraChars, nPatterns, isValid, "Bad: Extra characters");
     finalResult.nFailures += aux.nFailures;
     finalResult.nTests += aux.nTests;
     printf("\n");
@@ -141,7 +193,7 @@ TestResult testProtocolFormattedMessages(void) {
         "<msg><id>1<id><src>2b<src><target>3<target><msg>",
         "<msg><id>1<id><src>2<src><target>3c<target><msg>"
     };
-    aux = testBatch(badMessagesInvalidChars, nPatterns, isValid, "Bad: Invalid characters");
+    aux = testProtocolFormattedMessagesBatch(badMessagesInvalidChars, nPatterns, isValid, "Bad: Invalid characters");
     finalResult.nFailures += aux.nFailures;
     finalResult.nTests += aux.nTests;
     printf("\n");
@@ -154,7 +206,7 @@ TestResult testProtocolFormattedMessages(void) {
         "<msg><id>1<id><src> <src><target>3<target><msg>",
         "<msg><id>1<id><src>2<src><target>3 <target><msg>"
     };
-    aux = testBatch(badMessagesSpaces, nPatterns, isValid, "Bad: Unexpected spaces");
+    aux = testProtocolFormattedMessagesBatch(badMessagesSpaces, nPatterns, isValid, "Bad: Unexpected spaces");
     finalResult.nFailures += aux.nFailures;
     finalResult.nTests += aux.nTests;
     printf("\n");
@@ -171,13 +223,24 @@ int main() {
 
     // Run test groups
     TestResult acc = { 0, 0 };
-    TestResult aux;
+    // TestResult aux;
     int nGroups = 0;
 
     nGroups++;
-    aux = testProtocolFormattedMessages();
-    acc.nTests += aux.nTests;
-    acc.nFailures += aux.nFailures;
+    char content[100] = "";
+    const char tag[] = "<test>";
+    const char message[] = "<test>Loren Ipsun Dolur<test>";
+
+    bool isSuccessTemp = setContentBetweenTag(message, content, tag);
+    printf("\ncontent: '%s'\n", content);
+
+    acc.nTests += 1;
+    acc.nFailures += !isSuccessTemp;    
+
+    // nGroups++;
+    // aux = testProtocolFormattedMessages();
+    // acc.nTests += aux.nTests;
+    // acc.nFailures += aux.nFailures;
 
     // Notify end result
     bool isSuccess = acc.nFailures == 0;

@@ -427,13 +427,13 @@ bool strReadFromStdIn(char *buffer, size_t buffLength) {
 	return true;
 }
 
-// bool strStartsWith(const char *target, const char *prefix) {
-// 	size_t targetLength = strlen(target);
-//     size_t prefixLength = strlen(prefix);
-// 	if (prefixLength > targetLength)
-//         return false;
-//    return strncmp(target, prefix, strlen(prefix)) == 0;
-// }
+bool strStartsWith(const char *target, const char *prefix) {
+	size_t targetLength = strlen(target);
+    size_t prefixLength = strlen(prefix);
+	if (prefixLength > targetLength)
+        return false;
+   return strncmp(target, prefix, strlen(prefix)) == 0;
+}
 
 bool strEndsWith(const char *target, const char *suffix) {
 	size_t targetLength = strlen(target);
@@ -443,9 +443,17 @@ bool strEndsWith(const char *target, const char *suffix) {
     return strncmp(target + targetLength - suffixLength, suffix, suffixLength) == 0;
 }
 
-// void strGetSubstring(const char *src, char *dst, size_t start, size_t end) {
-//     strncpy(dst, src + start, end - start);
-// }
+void strGetSubstring(const char *src, char *dst, size_t start, size_t end) {
+	
+	if (start >= end) {
+		char aux[100] = "";
+		sprintf(aux, "strGetSubstring: 'start' / 'end' (%ld / %ld) nonsense...", start, end);
+		comLogErrorAndDie(aux);
+	}
+	
+	strncpy(dst, src + start, end - start);
+	dst[end - start] = '\0';
+}
 
 // char** strSplit(char* source, const char delimiter[1], const int maxTokens, const int maxLength, int *tokensCount) {
     
