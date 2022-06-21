@@ -65,7 +65,7 @@ bool setContentTagBounds(const char* src, const char *delimiter, int *begin, int
     return (*begin >= 0 && *end > *begin);
 }
 
-TestResult testProtocolFormattedMessagesBatch(const char **messages, const int nTests, const bool isValidMessage, const char *title) {
+TestResult testMsgPatternValidationBatch(const char **messages, const int nTests, const bool isValidMessage, const char *title) {
 
     char testType[15] = "";
     strcpy(testType, isValidMessage ? "Good\0" : "Bad\0");
@@ -97,7 +97,7 @@ TestResult testProtocolFormattedMessagesBatch(const char **messages, const int n
     return result;
 }
 
-TestResult testProtocolFormattedMessages(void) {
+TestResult testMsgPatternValidation(void) {
 
     printf("\n");
     printf("\n>> ---------------------------------------------------------------------------- >>");
@@ -116,7 +116,7 @@ TestResult testProtocolFormattedMessages(void) {
         "<msg><id>1<id><src>2<src><target>3<target><msg>",
         "<msg><id>1<id><src>2<src><target>3<target><payload>Loren Ipsun 123 Dolur<payload><msg>"
     };
-    aux = testProtocolFormattedMessagesBatch(goodMessages, nPatterns, isValid, "Good");
+    aux = testMsgPatternValidationBatch(goodMessages, nPatterns, isValid, "Good");
     finalResult.nFailures += aux.nFailures;
     finalResult.nTests += aux.nTests;
     printf("\n");
@@ -134,7 +134,7 @@ TestResult testProtocolFormattedMessages(void) {
         "<msg><id>1<id><src>2<src><target>3<target/><payload>Loren Ipsun 123 Dolur<payload><msg>",
         "<msg><id>1<id><src>2<src/><target>3<target><payload>Loren Ipsun 123 Dolur<payload><msg>"
     };
-    aux = testProtocolFormattedMessagesBatch(badMessagesWrongTag, nPatterns, isValid, "Bad: Wrong Tag names");
+    aux = testMsgPatternValidationBatch(badMessagesWrongTag, nPatterns, isValid, "Bad: Wrong Tag names");
     finalResult.nFailures += aux.nFailures;
     finalResult.nTests += aux.nTests;
     printf("\n");
@@ -150,7 +150,7 @@ TestResult testProtocolFormattedMessages(void) {
         "<msg><id>1<id><src>2<target>3<target><payload>Loren Ipsun 123 Dolur<payload><msg>",
         "<msg><id>1<src>2<src><target>3<target><payload>Loren Ipsun 123 Dolur<payload><msg>"
     };
-    aux = testProtocolFormattedMessagesBatch(badMessagesClosingTags, nPatterns, isValid, "Bad: Missing close tags");
+    aux = testMsgPatternValidationBatch(badMessagesClosingTags, nPatterns, isValid, "Bad: Missing close tags");
     finalResult.nFailures += aux.nFailures;
     finalResult.nTests += aux.nTests;
     printf("\n");
@@ -164,7 +164,7 @@ TestResult testProtocolFormattedMessages(void) {
         "<msg><id>1<id><src>2<src><target><target><msg>",
         "<msg><id>1<id><src>2<src><target>3<target><payload><payload><msg>",
     };
-    aux = testProtocolFormattedMessagesBatch(badMessagesMissingFields, nPatterns, isValid, "Bad: Missing required fields");
+    aux = testMsgPatternValidationBatch(badMessagesMissingFields, nPatterns, isValid, "Bad: Missing required fields");
     finalResult.nFailures += aux.nFailures;
     finalResult.nTests += aux.nTests;
     printf("\n");
@@ -179,7 +179,7 @@ TestResult testProtocolFormattedMessages(void) {
         "<msg><id>1<id><src>2<src><target>3<target><payload>Loren Ipsun Dolur2<payload><msg>",
         "<msg><id>1<id><src>2<src><target>3<target><payload>1Loren Ipsun Dolur2<payload><msg>"
     };
-    aux = testProtocolFormattedMessagesBatch(badMessagesExtraChars, nPatterns, isValid, "Bad: Extra characters");
+    aux = testMsgPatternValidationBatch(badMessagesExtraChars, nPatterns, isValid, "Bad: Extra characters");
     finalResult.nFailures += aux.nFailures;
     finalResult.nTests += aux.nTests;
     printf("\n");
@@ -192,7 +192,7 @@ TestResult testProtocolFormattedMessages(void) {
         "<msg><id>1<id><src>2b<src><target>3<target><msg>",
         "<msg><id>1<id><src>2<src><target>3c<target><msg>"
     };
-    aux = testProtocolFormattedMessagesBatch(badMessagesInvalidChars, nPatterns, isValid, "Bad: Invalid characters");
+    aux = testMsgPatternValidationBatch(badMessagesInvalidChars, nPatterns, isValid, "Bad: Invalid characters");
     finalResult.nFailures += aux.nFailures;
     finalResult.nTests += aux.nTests;
     printf("\n");
@@ -205,12 +205,66 @@ TestResult testProtocolFormattedMessages(void) {
         "<msg><id>1<id><src> <src><target>3<target><msg>",
         "<msg><id>1<id><src>2<src><target>3 <target><msg>"
     };
-    aux = testProtocolFormattedMessagesBatch(badMessagesSpaces, nPatterns, isValid, "Bad: Unexpected spaces");
+    aux = testMsgPatternValidationBatch(badMessagesSpaces, nPatterns, isValid, "Bad: Unexpected spaces");
     finalResult.nFailures += aux.nFailures;
     finalResult.nTests += aux.nTests;
     printf("\n");
     
     return finalResult;
+}
+
+typedef struct {
+    char *message;
+    char *title;
+    Message expectedResult;
+    bool isValid;
+} ExtractionTest;
+
+
+bool setMessageFromText(const char *text, Message *message) {
+
+    int begin = 0;
+    int end = 0;
+    
+    const int msgSize = (int)strlen(text);
+    char *temp = (char *)malloc(msgSize);
+    temp[0] = '\0';
+
+    // Msg
+    // if (!setContentTagBounds(text, NET_TAG_MSG, &begin, &end))
+    //     return false;
+    // strGetSubstring(text, temp, begin, end);
+    // strcpy(temp, text);
+
+    // Id
+    if (!setContentTagBounds(text, NET_TAG_ID, &begin, &end))
+        return false;
+    strGetSubstring(text, temp, begin, end);
+    message->id = atoi(temp);
+
+    // Src
+    if (!setContentTagBounds(text, NET_TAG_SRC, &begin, &end))
+        return false;
+    strGetSubstring(text, temp, begin, end);
+    message->source = atoi(temp);
+
+    // target
+    if (!setContentTagBounds(text, NET_TAG_SRC, &begin, &end))
+        return false;
+    strGetSubstring(text, temp, begin, end);
+    message->target = atoi(temp);
+
+    // Payload
+    /**
+     * TODO: 2022-06-21 - How will we do this??
+     */
+    
+    // if (!setContentTagBounds(messageText, NET_TAG_SRC, &begin, &end))
+    //     return false;
+    // strGetSubstring(messageText, temp, begin, end);
+    // result->target = atoi(temp);
+
+    return true;
 }
 
 int main() {
@@ -241,7 +295,7 @@ int main() {
     acc.nFailures += !isSuccessTemp;    
 
     // nGroups++;
-    // aux = testProtocolFormattedMessages();
+    // aux = testMsgPatternValidation();
     // acc.nTests += aux.nTests;
     // acc.nFailures += aux.nFailures;
 
