@@ -31,34 +31,34 @@ bool setMessageFromText(const char *text, Message *message) {
     temp[0] = '\0';
 
     // Msg
-    // if (!setContentTagBounds(text, NET_TAG_MSG, &begin, &end))
+    // if (!strSetDelimitedTextBounds(text, NET_TAG_MSG, &begin, &end))
     //     return false;
     // strGetSubstring(text, temp, begin, end);
     // strcpy(temp, text);
 
     // Id
-    if (!setContentTagBounds(text, NET_TAG_ID, &begin, &end))
+    if (!strSetDelimitedTextBounds(text, NET_TAG_ID, &begin, &end))
         return false;
-    strGetSubstring(text, temp, begin, end);
+    strSubstring(text, temp, begin, end);
     message->id = atoi(temp);
 
     // Src
-    if (!setContentTagBounds(text, NET_TAG_SRC, &begin, &end))
+    if (!strSetDelimitedTextBounds(text, NET_TAG_SRC, &begin, &end))
         return false;
-    strGetSubstring(text, temp, begin, end);
+    strSubstring(text, temp, begin, end);
     message->source = atoi(temp);
 
     // target
-    if (!setContentTagBounds(text, NET_TAG_TARGET, &begin, &end))
+    if (!strSetDelimitedTextBounds(text, NET_TAG_TARGET, &begin, &end))
         return false;
-    strGetSubstring(text, temp, begin, end);
+    strSubstring(text, temp, begin, end);
     message->target = atoi(temp);
 
     // Payload
     // TODO: 2022-06-21 - How will we do this??
-    if (!setContentTagBounds(text, NET_TAG_PAYLOAD, &begin, &end))
+    if (!strSetDelimitedTextBounds(text, NET_TAG_PAYLOAD, &begin, &end))
         return false;
-    strGetSubstring(text, temp, begin, end);
+    strSubstring(text, temp, begin, end);
 
     message->payload = (char *)malloc(strlen(temp));
     strcpy(message->payload, temp);
@@ -358,7 +358,7 @@ int main() {
 
     // int begin = 0;
     // int end = 0;
-    // bool isSuccessTemp = setContentTagBounds(message, tag, &begin, &end);
+    // bool isSuccessTemp = strSetDelimitedTextBounds(message, tag, &begin, &end);
     
     // char content[100] = "";
     // strGetSubstring(message, content, begin, end);

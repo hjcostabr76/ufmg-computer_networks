@@ -89,7 +89,6 @@ void comLogErrorAndDie(char *msg);
 /** -- MAIN ------------- */
 
 bool validateReceivedMsg(const char *message);
-bool setContentTagBounds(const char* src, const char *delimiter, int *begin, int *end);
 // Equipment getEmptyEquipment(void);
 // Command getGenericCommand(void);
 // Command getEmptyCommand(CmdCodeEnum code);
@@ -116,4 +115,5 @@ bool strIsNumeric(const char *string);
 bool strIsAlphaNumericChar(const char c);
 // char* strTrim(const char *string);
 // char** strSplit(char* source, const char delimiter[1], const int maxTokens, const int maxLength, int *tokensCount);
-void strGetSubstring(const char *src, char *dst, size_t start, size_t end);
+void strSubstring(const char *src, char *dst, size_t start, size_t end);
+bool strSetDelimitedTextBounds(const char* src, const char *delimiter, int *begin, int *end);

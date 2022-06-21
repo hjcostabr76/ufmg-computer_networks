@@ -140,57 +140,6 @@ void buildMessageToSend(const Message msg, char *buffer) {
 	strcat(buffer, NET_TAG_MSG); // Message
 }
 
-bool setContentTagBounds(const char* src, const char *delimiter, int *begin, int *end) {
-
-    // Validate
-    if (begin == NULL || end == NULL) {
-        comDebugStep("Give something to work with (null values for begin and/or end)...");
-        return false;
-    }
-
-    const int msgSize = strlen(src);
-    const int delimiterSize = strlen(delimiter);
-
-    if (!msgSize || !delimiterSize || delimiterSize > msgSize) {
-        char msg[60] = "";
-        sprintf(msg, "[Error!] 'msgSize' / 'delimiterSize' nonsense (%d / %d)...", msgSize, delimiterSize);
-        comDebugStep(msg);
-        return false;
-    }
-
-    // Seek for the message we're looking for
-    *begin = -1;
-    *end = -1;
-
-    int i = 0;
-    char *temp = (char *)malloc(msgSize);
-    temp[0] = '\0';
-
-    do {
-
-        // Check for a match
-        strGetSubstring(src, temp, i, msgSize);
-        
-        const bool isMatch = strStartsWith(temp, delimiter);
-        if (!isMatch) {
-            i += 1;
-            continue;
-        }
-        
-        // Update search state
-        if (*begin >= 0) {
-            *end = i;
-            break;
-        }
-        
-        i += delimiterSize;
-        *begin = i;
-
-    } while (i < msgSize);
-
-    return (*begin >= 0 && *end > *begin);
-}
-
 /**
  * ------------------------------------------------
  * == NETWORK =====================================
@@ -494,16 +443,67 @@ bool strEndsWith(const char *target, const char *suffix) {
     return strncmp(target + targetLength - suffixLength, suffix, suffixLength) == 0;
 }
 
-void strGetSubstring(const char *src, char *dst, size_t start, size_t end) {
+void strSubstring(const char *src, char *dst, size_t start, size_t end) {
 	
 	if (start >= end) {
 		char aux[100] = "";
-		sprintf(aux, "strGetSubstring: 'start' / 'end' (%ld / %ld) nonsense...", start, end);
+		sprintf(aux, "strSubstring: 'start' / 'end' (%ld / %ld) nonsense...", start, end);
 		comLogErrorAndDie(aux);
 	}
 	
 	strncpy(dst, src + start, end - start);
 	dst[end - start] = '\0';
+}
+
+bool strSetDelimitedTextBounds(const char* src, const char *delimiter, int *begin, int *end) {
+
+    // Validate
+    if (begin == NULL || end == NULL) {
+        comDebugStep("Give something to work with (null values for begin and/or end)...");
+        return false;
+    }
+
+    const int msgSize = strlen(src);
+    const int delimiterSize = strlen(delimiter);
+
+    if (!msgSize || !delimiterSize || delimiterSize > msgSize) {
+        char msg[60] = "";
+        sprintf(msg, "[Error!] 'msgSize' / 'delimiterSize' nonsense (%d / %d)...", msgSize, delimiterSize);
+        comDebugStep(msg);
+        return false;
+    }
+
+    // Seek for the message we're looking for
+    *begin = -1;
+    *end = -1;
+
+    int i = 0;
+    char *temp = (char *)malloc(msgSize);
+    temp[0] = '\0';
+
+    do {
+
+        // Check for a match
+        strSubstring(src, temp, i, msgSize);
+        
+        const bool isMatch = strStartsWith(temp, delimiter);
+        if (!isMatch) {
+            i += 1;
+            continue;
+        }
+        
+        // Update search state
+        if (*begin >= 0) {
+            *end = i;
+            break;
+        }
+        
+        i += delimiterSize;
+        *begin = i;
+
+    } while (i < msgSize);
+
+    return (*begin >= 0 && *end > *begin);
 }
 
 // char** strSplit(char* source, const char delimiter[1], const int maxTokens, const int maxLength, int *tokensCount) {
