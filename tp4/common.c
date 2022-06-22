@@ -136,6 +136,28 @@ void buildMessageToSend(const Message msg, char *buffer) {
 	strcat(buffer, NET_TAG_MSG); // Message
 }
 
+bool isValidMessageId(const int id) {
+	return (
+		id == MSG_REQ_ADD
+		|| id == MSG_REQ_RM
+		|| id == MSG_RES_ADD
+		|| id == MSG_RES_LIST
+		|| id == MSG_REQ_INF
+		|| id == MSG_RES_INF
+		|| id == MSG_ERR
+		|| id == MSG_OK
+	);
+}
+
+bool isValidEquipId(const int id) {
+	return id > 0 && id < MAX_CONNECTIONS;
+}
+
+int getIntTypeMessageField(const char *text, char *temp, int begin, int end) {
+	strSubstring(text, temp, begin, end);
+	return atoi(temp);
+}
+
 bool setMessageFromText(const char *text, Message *message) {
 
     // Initialize things
@@ -153,67 +175,89 @@ bool setMessageFromText(const char *text, Message *message) {
     int begin = 0;
     int end = 0;
 
-    if (!strSetDelimitedTextBounds(text, NET_TAG_ID, &begin, &end))
+    if (!strSetDelimitedTextBounds(text, NET_TAG_ID, &begin, &end)){
         return false;
-    strSubstring(text, temp, begin, end);
+	}
+	int id = getIntTypeMessageField(text, temp, begin, end);
+	if (isValidMessageId(id))
+		return false;
     message->id = atoi(temp);
 
     // Src
-    if (!strSetDelimitedTextBounds(text, NET_TAG_SRC, &begin, &end))
+    if (!strSetDelimitedTextBounds(text, NET_TAG_SRC, &begin, &end)){
         return false;
-    strSubstring(text, temp, begin, end);
-    message->source = atoi(temp);
+	}
+	int src = getIntTypeMessageField(text, temp, begin, end);
+	if (isValidEquipId(src))
+		return false;
+    message->source = src;
 
     // target
-    if (!strSetDelimitedTextBounds(text, NET_TAG_TARGET, &begin, &end))
+    if (!strSetDelimitedTextBounds(text, NET_TAG_TARGET, &begin, &end)){
         return false;
-    strSubstring(text, temp, begin, end);
-    message->target = atoi(temp);
+	}
+	int target = getIntTypeMessageField(text, temp, begin, end);
+	if (isValidEquipId(target))
+		return false;
+    message->target = target;
 
     // Payload
-    if (!strSetDelimitedTextBounds(text, NET_TAG_PAYLOAD, &begin, &end))
+	// printf("\nsetMessageFromText [Payload] 1");
+    if (!strSetDelimitedTextBounds(text, NET_TAG_PAYLOAD, &begin, &end)) {
         return true; // NOTE: Payload is optional!
-
+	}
+	// printf("\nsetMessageFromText [Payload] 2");
     strSubstring(text, temp, begin, end);
     message->payloadText = (char *)malloc(strlen(temp));
     strcpy(message->payloadText, temp);
     
+	// printf("\nsetMessageFromText [Payload] 3");
     switch (message->id) {
         
         // Message types with no payload
         case MSG_REQ_ADD:
         case MSG_REQ_RM:
         case MSG_REQ_INF:
+			// printf("\nsetMessageFromText [Payload] 4");
             return true;
         
         // Message types with integer value payloads
         case MSG_RES_ADD:
         case MSG_ERR:
         case MSG_OK: {
+			// printf("\nsetMessageFromText [Payload] 5");
             message->payload = (int *)malloc(sizeof(int));
+			// printf("\nsetMessageFromText [Payload] 5.1");
             *(int *)message->payload = atoi(temp);
+			// printf("\nsetMessageFromText [Payload] 5.2");
             return true;
 
         // Message types with float value payload
         } case MSG_RES_INF: {
+			// printf("\nsetMessageFromText [Payload] 6");
             if (!strRegexMatch("^[0-9]+\\.[0-9]{2}$", temp, NULL))
                 return false;
+			// printf("\nsetMessageFromText [Payload] 6.1");
             message->payload = (float *)malloc(sizeof(float));
+			// printf("\nsetMessageFromText [Payload] 6.2");
             *(float *)message->payload = atof(temp);
             return true;
         }
 
         // Message types with list with integers value payload
         case MSG_RES_LIST: {
-
+			// printf("\nsetMessageFromText [Payload] 7");
             if (!strRegexMatch("^[0-9]{1,2}(,[0-9]{1,2})*$", temp, NULL))
                 return false;
 
+			// printf("\nsetMessageFromText [Payload] 7.1");
             int nEquipments = 0;
             char **idStringList = strSplit(temp, ",", MAX_CONNECTIONS, 2, &nEquipments);
             
+			// printf("\nsetMessageFromText [Payload] 7.2");
             message->payload = (int *)malloc(nEquipments * sizeof(int));
             for (int i = 0; i < nEquipments; i++) {
+				// printf("\nsetMessageFromText [Payload] 7.3.%d", i);
                 ((int *)message->payload)[i] = atoi(idStringList[i]);
             }
             return true;
@@ -221,6 +265,7 @@ bool setMessageFromText(const char *text, Message *message) {
 
         // Something wrong isn't right
         default:
+			// printf("\nsetMessageFromText [Payload] 7.4");
             return false;
     }
 }
