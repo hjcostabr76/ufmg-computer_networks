@@ -85,10 +85,6 @@ void comDebugStep(const char *text) {
  * ------------------------------------------------
  */
 
-// char buffer[BUF_SIZE] = "";
-// char payload[MAX_PAYLOAD_SIZE] = "Loren Ipsun Dolur";
-// const Message message = { 1, 2, 3, (void *)payload };
-
 bool isProtocolInitialized = false;
 char protocolPattern[150] = "";
 

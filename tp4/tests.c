@@ -308,7 +308,7 @@ TestResult testMsgExtractionBatch(const ExtractionTest tests[], const int nTests
 
             // Explain how payload is wrong
             if (!isValidPayload) {
-                printf("\n\n\t--- How did payload is bad: ------");
+                printf("\n\n\t--- How did payload went bad: ----");
                 printf("\n\tisValidPayload: %d", isValidPayload);
                 printf("\n\tisValidPayloadTxt: %d", isValidPayloadTxt);
                 printf("\n\tisValidEmptyPayload: %d", isValidEmptyPayload);
@@ -352,11 +352,11 @@ TestResult testMsgExtraction(void) {
     int i = 0;
     int j = -1;
 
-    /* - New Test: REQ_ADD ---- */
+    /* - New Test: MSG_REQ_ADD --- */
     goodTests[i].isVerbose = isVerbose;
     goodTests[i].messageText = "<msg><id>1<id><src>2<src><target>3<target><msg>";
     
-    goodTests[i].expectedResult.id = 1;
+    goodTests[i].expectedResult.id = MSG_REQ_ADD;
     goodTests[i].expectedResult.source = 2;
     goodTests[i].expectedResult.target = 3;
 
@@ -368,26 +368,131 @@ TestResult testMsgExtraction(void) {
     goodTests[i].payloadListLength = 0;
     i++;
 
-    /* - New Test: RES_LIST --- */
+    /* - New Test: MSG_REQ_RM ---- */
+    goodTests[i].isVerbose = isVerbose;
+    goodTests[i].messageText = "<msg><id>2<id><src>3<src><target>4<target><msg>";
+    
+    goodTests[i].expectedResult.id = MSG_REQ_RM;
+    goodTests[i].expectedResult.source = 3;
+    goodTests[i].expectedResult.target = 4;
+
+    goodTests[i].expectedResult.payloadText = NULL;
+    goodTests[i].expectedResult.payload = NULL;
+    goodTests[i].isPayloadInt = false;
+    goodTests[i].isPayloadFloat = false;
+    goodTests[i].isPayloadIntList = false;
+    goodTests[i].payloadListLength = 0;
+
+    /* - New Test: MSG_RES_ADD --- */
+    goodTests[i].isVerbose = isVerbose;
+    goodTests[i].messageText = "<msg><id>3<id><src>5<src><target>14<target><payload>10<payload><msg>";
+    
+    goodTests[i].expectedResult.id = MSG_RES_ADD;
+    goodTests[i].expectedResult.source = 5;
+    goodTests[i].expectedResult.target = 14;
+
+    goodTests[i].expectedResult.payloadText = "10";
+    goodTests[i].expectedResult.payload = (int *)malloc(sizeof(int));
+    *(int *)goodTests[i].expectedResult.payload = 10;
+    
+    goodTests[i].isPayloadInt = true;
+    goodTests[i].isPayloadFloat = false;
+    goodTests[i].isPayloadIntList = false;
+    goodTests[i].payloadListLength = 0;
+    i++;
+
+    /* - New Test: MSG_RES_LIST -- */
     j = -1;
 
     goodTests[i].isVerbose = isVerbose;
-    goodTests[i].messageText = "<msg><id>4<id><src>11<src><target>13<target><payload>1,13,15<payload><msg>";
+    goodTests[i].messageText = "<msg><id>4<id><src>15<src><target>9<target><payload>10,1,12,11,5<payload><msg>";
     
-    goodTests[i].expectedResult.id = 4;
-    goodTests[i].expectedResult.source = 11;
-    goodTests[i].expectedResult.target = 13;
+    goodTests[i].expectedResult.id = MSG_RES_LIST;
+    goodTests[i].expectedResult.source = 15;
+    goodTests[i].expectedResult.target = 9;
     
-    goodTests[i].expectedResult.payloadText = "1,13,15";
-    goodTests[i].expectedResult.payload = (int *)malloc(3 * sizeof(int));
+    goodTests[i].expectedResult.payloadText = "10,1,12,11,5";
+    goodTests[i].expectedResult.payload = (int *)malloc(5 * sizeof(int));
+    ((int *)goodTests[i].expectedResult.payload)[++j] = 10;
     ((int *)goodTests[i].expectedResult.payload)[++j] = 1;
-    ((int *)goodTests[i].expectedResult.payload)[++j] = 13;
-    ((int *)goodTests[i].expectedResult.payload)[++j] = 15;
+    ((int *)goodTests[i].expectedResult.payload)[++j] = 12;
+    ((int *)goodTests[i].expectedResult.payload)[++j] = 11;
+    ((int *)goodTests[i].expectedResult.payload)[++j] = 5;
 
     goodTests[i].isPayloadInt = false;
     goodTests[i].isPayloadFloat = false;
     goodTests[i].isPayloadIntList = true;
     goodTests[i].payloadListLength = j + 1;
+    i++;
+
+    /* - New Test: MSG_REQ_INF --- */
+    goodTests[i].isVerbose = isVerbose;
+    goodTests[i].messageText = "<msg><id>5<id><src>3<src><target>8<target><msg>";
+    
+    goodTests[i].expectedResult.id = MSG_REQ_INF;
+    goodTests[i].expectedResult.source = 3;
+    goodTests[i].expectedResult.target = 8;
+
+    goodTests[i].expectedResult.payloadText = NULL;
+    goodTests[i].expectedResult.payload = NULL;
+    goodTests[i].isPayloadInt = false;
+    goodTests[i].isPayloadFloat = false;
+    goodTests[i].isPayloadIntList = false;
+    goodTests[i].payloadListLength = 0;
+    i++;
+
+    /* - New Test: MSG_RES_INF --- */
+    goodTests[i].isVerbose = isVerbose;
+    goodTests[i].messageText = "<msg><id>6<id><src>2<src><target>7<target><payload>120.52<payload><msg>";
+    
+    goodTests[i].expectedResult.id = MSG_RES_INF;
+    goodTests[i].expectedResult.source = 2;
+    goodTests[i].expectedResult.target = 7;
+
+    goodTests[i].expectedResult.payloadText = "120.52";
+    goodTests[i].expectedResult.payload = (float *)malloc(sizeof(float));
+    *(float *)goodTests[i].expectedResult.payload = 120.52;
+    
+    goodTests[i].isPayloadInt = false;
+    goodTests[i].isPayloadFloat = true;
+    goodTests[i].isPayloadIntList = false;
+    goodTests[i].payloadListLength = 0;
+    i++;
+
+    /* - New Test: MSG_ERR ------- */
+    goodTests[i].isVerbose = isVerbose;
+    goodTests[i].messageText = "<msg><id>7<id><src>12<src><target>1<target><payload>4<payload><msg>";
+    
+    goodTests[i].expectedResult.id = MSG_ERR;
+    goodTests[i].expectedResult.source = 12;
+    goodTests[i].expectedResult.target = 1;
+
+    goodTests[i].expectedResult.payloadText = "4";
+    goodTests[i].expectedResult.payload = (ErrorCodeEnum *)malloc(sizeof(ErrorCodeEnum));
+    *(ErrorCodeEnum *)goodTests[i].expectedResult.payload = ERR_MAX_EQUIP;
+    
+    goodTests[i].isPayloadInt = true;
+    goodTests[i].isPayloadFloat = false;
+    goodTests[i].isPayloadIntList = false;
+    goodTests[i].payloadListLength = 0;
+    i++;
+
+    /* - New Test: MSG_OK -------- */
+    goodTests[i].isVerbose = isVerbose;
+    goodTests[i].messageText = "<msg><id>8<id><src>13<src><target>11<target><payload>1<payload><msg>";
+    
+    goodTests[i].expectedResult.id = MSG_OK;
+    goodTests[i].expectedResult.source = 13;
+    goodTests[i].expectedResult.target = 11;
+
+    goodTests[i].expectedResult.payloadText = "1";
+    goodTests[i].expectedResult.payload = (OkMessageCodeEnum *)malloc(sizeof(OkMessageCodeEnum));
+    *(OkMessageCodeEnum *)goodTests[i].expectedResult.payload = OK_RM;
+    
+    goodTests[i].isPayloadInt = true;
+    goodTests[i].isPayloadFloat = false;
+    goodTests[i].isPayloadIntList = false;
+    goodTests[i].payloadListLength = 0;
     i++;
 
     /* - New Test ------------- */

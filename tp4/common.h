@@ -41,10 +41,10 @@ extern const char* NET_TAG_PAYLOAD;
 
 typedef enum { CMD_CODE_KILL, CMD_CODE_LIST, CMD_CODE_INFO } CommandCodeEnum;
 
-typedef enum { OK_RM } OkMessageCodeEnum;
+typedef enum { OK_RM = 1 } OkMessageCodeEnum;
 
 typedef enum {
-    ERR_NOT_FOUND,
+    ERR_NOT_FOUND = 1,
     ERR_NOT_FOUND_SRC,
     ERR_NOT_FOUND_TARGET,
     ERR_MAX_EQUIP,
