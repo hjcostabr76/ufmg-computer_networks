@@ -27,14 +27,21 @@ typedef struct {
 
 bool setMessageFromText(const char *text, Message *message) {
 
+    // Initialize things
+    message->id = 0;
+    message->source = 0;
+    message->target = 0;
+    message->payload = NULL;
+    message->payloadText = NULL;
+
     const int msgSize = (int)strlen(text);
     char *temp = (char *)malloc(msgSize);
     temp[0] = '\0';
     
+    // Id
     int begin = 0;
     int end = 0;
 
-    // Id
     if (!strSetDelimitedTextBounds(text, NET_TAG_ID, &begin, &end))
         return false;
     strSubstring(text, temp, begin, end);
@@ -53,23 +60,58 @@ bool setMessageFromText(const char *text, Message *message) {
     message->target = atoi(temp);
 
     // Payload
-    if (!strSetDelimitedTextBounds(text, NET_TAG_PAYLOAD, &begin, &end)) {
-        message->payload = NULL;
-        message->payloadText = NULL;
+    if (!strSetDelimitedTextBounds(text, NET_TAG_PAYLOAD, &begin, &end))
         return true; // NOTE: Payload is optional!
-    }
 
     strSubstring(text, temp, begin, end);
     message->payloadText = (char *)malloc(strlen(temp));
     strcpy(message->payloadText, temp);
     
-    /**
-     * TODO: 2022-06-21 - Parse according to message type...
-     */
-    message->payload = (char *)malloc(strlen(temp));
-    strcpy(message->payload, temp);
+    switch (message->id) {
+        
+        // Message types with no payload
+        case MSG_REQ_ADD:
+        case MSG_REQ_RM:
+        case MSG_REQ_INF:
+            return true;
+        
+        // Message types with integer value payloads
+        case MSG_RES_ADD:
+        case MSG_ERR:
+        case MSG_OK: {
+            message->payload = (int *)malloc(sizeof(int));
+            *(int *)message->payload = atoi(temp);
+            return true;
 
-    return true;
+        // Message types with float value payload
+        } case MSG_RES_INF: {
+            if (!strRegexMatch("^[0-9]+\\.[0-9]{2}$", temp, NULL))
+                return false;
+            message->payload = (float *)malloc(sizeof(float));
+            *(float *)message->payload = atof(temp);
+            return true;
+        }
+
+        // Message types with list with integers value payload
+        case MSG_RES_LIST: {
+
+            if (!strRegexMatch("^[0-9]{1,2}(,[0-9]{1,2})*$", temp, NULL))
+                return false;
+
+            int nEquipments = 0;
+            char **idStringList = strSplit(temp, ",", MAX_CONNECTIONS, 2, &nEquipments);
+            
+            message->payload = (int *)malloc(nEquipments * sizeof(int));
+            for (int i = 0; i < nEquipments; i++) {
+                ((int *)message->payload)[i] = atoi(idStringList[i]);
+            }
+            return true;
+        }
+
+        // Something wrong isn't right
+        default:
+            return false;
+    }
 }
 
 
@@ -251,7 +293,6 @@ TestResult testMsgExtractionBatch(const ExtractionTest tests[], const int nTests
         bool isValidPayloadFloat = false;
         bool isValidPayloadInt = false;
         bool isValidPayloadIntList = false;
-        bool isValidPayloadIntString = false;
 
         if (message.payload == NULL) // Test for is there anything to validate
             isValidEmptyPayload = test.expectedResult.payload == NULL;
@@ -263,18 +304,12 @@ TestResult testMsgExtractionBatch(const ExtractionTest tests[], const int nTests
             isValidPayloadInt = *(int *)message.payload == *(int *)test.expectedResult.payload;
         
         else if (test.isPayloadIntList) { // Test for List of integers
-
-            int *aux = (int *)malloc(test.payloadListLength * sizeof(int));
-            memset(aux, 0, test.payloadListLength);
-            memcpy(aux, message.payload, test.payloadListLength);
-
             for (int i = 0; i < test.payloadListLength; i++) {
-                isValidPayloadIntList = aux[i] == ((int *)test.expectedResult.payload)[i];
+                isValidPayloadIntList = ((int *)message.payload)[i] == ((int *)test.expectedResult.payload)[i];
                 if (!isValidPayloadIntList)
                     break;
             }
-        } else // Test for string
-            isValidPayloadIntString = strcmp(message.payload, test.expectedResult.payload) == 0;
+        }
 
         const bool isValidPayload = (
             isValidPayloadTxt
@@ -283,7 +318,6 @@ TestResult testMsgExtractionBatch(const ExtractionTest tests[], const int nTests
                 || isValidPayloadFloat
                 || isValidPayloadInt
                 || isValidPayloadIntList
-                || isValidPayloadIntString
             )
         );
 
@@ -314,17 +348,14 @@ TestResult testMsgExtractionBatch(const ExtractionTest tests[], const int nTests
             printf("\n\tmessage.source: '%d'", message.source);
             printf("\n\tmessage.target: '%d'", message.target);
             
-            if (isValidPayloadTxt)
-                printf("\n\tmessage.payloadText: '%s'", message.payloadText);
-            else
-                printf("\n\tmessage.payloadText: 'BAD STUFF'");
+            if (message.payloadText == NULL)
+                    printf("\n\tmessage.payloadText: 'NULL'");
+                else
+                    printf("\n\tmessage.payloadText: '%s'", message.payloadText);
 
             // Print actual payload
             if (message.payload == NULL) // Empty
                 printf("\n\tmessage.payload: 'NULL'");
-            
-            else if (!isValidPayload)
-                printf("\n\tmessage.payload: 'BAD STUFF'");
 
             else if (test.isPayloadFloat) // Float
                 printf("\n\tmessage.payload: '%.2f'", *(float *)message.payload);
@@ -336,16 +367,19 @@ TestResult testMsgExtractionBatch(const ExtractionTest tests[], const int nTests
                 printf("\n\tmessage.payload: ");
                 for (int i = 0; i < test.payloadListLength; i++)
                     printf("'%d'; ", ((int *)message.payload)[i]);
-
-            } else // String
-                printf("\n\tmessage.payload: '%s'", (char *)message.payload);
+            } else
+                printf("\n\tmessage.payload: 'BAD STUFF'");
 
             // Print expected header
             printf("\n\n\t--- What was supposed to come: ---");
             printf("\n\ttest.expectedResult.id: '%d'", test.expectedResult.id);
             printf("\n\ttest.expectedResult.source: '%d'", test.expectedResult.source);
             printf("\n\ttest.expectedResult.target: '%d'", test.expectedResult.target);
-            printf("\n\ttest.expectedResult.payloadText: '%s'", test.expectedResult.payloadText);
+
+            if (test.expectedResult.payloadText == NULL)
+                printf("\n\ttest.expectedResult.payloadText: 'NULL'");
+            else
+                printf("\n\ttest.expectedResult.payloadText: '%s'", test.expectedResult.payloadText);
             
             // Print expected payload
             if (test.expectedResult.payload == NULL) // Empty
@@ -361,9 +395,18 @@ TestResult testMsgExtractionBatch(const ExtractionTest tests[], const int nTests
                 printf("\n\ttest.expectedResult.payload: ");
                 for (int i = 0; i < test.payloadListLength; i++)
                     printf("'%d'; ", ((int *)test.expectedResult.payload)[i]);
+            }
 
-            } else // String
-                printf("\n\ttest.expectedResult.payload: '%s'", (char *)test.expectedResult.payload);
+            // Explain how payload is wrong
+            if (!isValidPayload) {
+                printf("\n\n\t--- How did payload is bad: ------");
+                printf("\n\tisValidPayload: %d", isValidPayload);
+                printf("\n\tisValidPayloadTxt: %d", isValidPayloadTxt);
+                printf("\n\tisValidEmptyPayload: %d", isValidEmptyPayload);
+                printf("\n\tisValidPayloadFloat: %d", isValidPayloadFloat);
+                printf("\n\tisValidPayloadInt: %d", isValidPayloadInt);
+                printf("\n\tisValidPayloadIntList: %d", isValidPayloadIntList);
+            }
 
             // Compute result
             printf("\n");
@@ -393,7 +436,6 @@ TestResult testMsgExtraction(void) {
     TestResult aux = { 0, 0 };
     TestResult finalResult = { 0, 0 };
 
-    /* - New Test ------------- */
     bool isValid = true;
     bool isVerbose = true;
     
@@ -401,6 +443,7 @@ TestResult testMsgExtraction(void) {
     int i = 0;
     int j = -1;
 
+    /* - New Test: REQ_ADD ---- */
     goodTests[i].isVerbose = isVerbose;
     goodTests[i].messageText = "<msg><id>1<id><src>2<src><target>3<target><msg>";
     
@@ -416,43 +459,43 @@ TestResult testMsgExtraction(void) {
     goodTests[i].payloadListLength = 0;
     i++;
 
-    /* - New Test ------------- */
-    goodTests[i].isVerbose = isVerbose;
-    goodTests[i].messageText = "<msg><id>1<id><src>2<src><target>3<target><payload>Loren Ipsun 123 Dolur<payload><msg>";
-    
-    goodTests[i].expectedResult.id = 1;
-    goodTests[i].expectedResult.source = 2;
-    goodTests[i].expectedResult.target = 3;
-    
-    goodTests[i].expectedResult.payload = "Loren Ipsun 123 Dolur";
-    goodTests[i].expectedResult.payloadText = "Loren Ipsun 123 Dolur";
-    goodTests[i].isPayloadInt = false;
-    goodTests[i].isPayloadFloat = false;
-    goodTests[i].isPayloadIntList = false;
-    goodTests[i].payloadListLength = 0;
-    i++;
-
-    /* - New Test ------------- */
+    /* - New Test: RES_LIST --- */
     j = -1;
 
     goodTests[i].isVerbose = isVerbose;
-    goodTests[i].messageText = "<msg><id>9<id><src>11<src><target>13<target><payload>1,13,15<payload><msg>";
+    goodTests[i].messageText = "<msg><id>4<id><src>11<src><target>13<target><payload>1,13,15<payload><msg>";
     
-    goodTests[i].expectedResult.id = 9;
+    goodTests[i].expectedResult.id = 4;
     goodTests[i].expectedResult.source = 11;
     goodTests[i].expectedResult.target = 13;
     
     goodTests[i].expectedResult.payloadText = "1,13,15";
     goodTests[i].expectedResult.payload = (int *)malloc(3 * sizeof(int));
     ((int *)goodTests[i].expectedResult.payload)[++j] = 1;
-    ((int *)goodTests[i].expectedResult.payload)[++j] = 11;
     ((int *)goodTests[i].expectedResult.payload)[++j] = 13;
+    ((int *)goodTests[i].expectedResult.payload)[++j] = 15;
 
     goodTests[i].isPayloadInt = false;
     goodTests[i].isPayloadFloat = false;
     goodTests[i].isPayloadIntList = true;
-    goodTests[i].payloadListLength = j;
+    goodTests[i].payloadListLength = j + 1;
     i++;
+
+    /* - New Test ------------- */
+    // goodTests[i].isVerbose = isVerbose;
+    // goodTests[i].messageText = "<msg><id>1<id><src>2<src><target>3<target><payload>Loren Ipsun 123 Dolur<payload><msg>";
+    
+    // goodTests[i].expectedResult.id = 1;
+    // goodTests[i].expectedResult.source = 2;
+    // goodTests[i].expectedResult.target = 3;
+    
+    // goodTests[i].expectedResult.payload = "Loren Ipsun 123 Dolur";
+    // goodTests[i].expectedResult.payloadText = "Loren Ipsun 123 Dolur";
+    // goodTests[i].isPayloadInt = false;
+    // goodTests[i].isPayloadFloat = false;
+    // goodTests[i].isPayloadIntList = false;
+    // goodTests[i].payloadListLength = 0;
+    // i++;
 
     /* - Test em'all! --------- */
     aux = testMsgExtractionBatch(goodTests, i, isValid, "Good");

@@ -506,27 +506,27 @@ bool strSetDelimitedTextBounds(const char* src, const char *delimiter, int *begi
     return (*begin >= 0 && *end > *begin);
 }
 
-// char** strSplit(char* source, const char delimiter[1], const int maxTokens, const int maxLength, int *tokensCount) {
+char** strSplit(char* source, const char delimiter[1], const int maxTokens, const int maxLength, int *tokensCount) {
     
-//     *tokensCount = 0;
-//     char** tokens = malloc(maxTokens * sizeof(char*));
+    *tokensCount = 0;
+    char** tokens = malloc(maxTokens * sizeof(char*));
     
-//     char *token = strtok(source, delimiter);
-//     if (token == NULL)
-//         return tokens;
+    char *token = strtok(source, delimiter);
+    if (token == NULL)
+        return tokens;
 
-//     while (token != NULL && *tokensCount < maxTokens) {
+    while (token != NULL && *tokensCount < maxTokens) {
 
-//         tokens[*tokensCount] = malloc(maxLength * sizeof(char));
-//         memset(tokens[*tokensCount], '\n', maxLength * sizeof(char));
-//         strcpy(tokens[*tokensCount], token);
+        tokens[*tokensCount] = malloc(maxLength * sizeof(char));
+        memset(tokens[*tokensCount], '\n', maxLength * sizeof(char));
+        strcpy(tokens[*tokensCount], token);
         
-//         *tokensCount = *tokensCount + 1;
-//         token = strtok(NULL, delimiter);
-//     }
+        *tokensCount = *tokensCount + 1;
+        token = strtok(NULL, delimiter);
+    }
 
-//     return tokens;
-// }
+    return tokens;
+}
 
 bool strRegexMatch(const char* pattern, const char* str, char errorMsg[100]) {
 

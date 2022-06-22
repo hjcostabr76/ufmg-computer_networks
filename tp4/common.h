@@ -51,15 +51,16 @@ typedef enum {
 } ErrorCodeEnum;
 
 typedef enum {
-    MSG_REQ_ADD,
+    MSG_REQ_ADD = 1,
     MSG_REQ_RM,
-    MSG_REQ_INF,
-    MSG_REQ_LIST,
     MSG_RES_ADD,
-    MSG_RES_RM,
+    MSG_RES_LIST,
+    MSG_REQ_INF,
     MSG_RES_INF,
     MSG_ERR,
     MSG_OK
+    // MSG_REQ_LIST,
+    // MSG_RES_RM,
 } MessageIdEnum;
 
 /**
@@ -115,6 +116,6 @@ bool strStartsWith(const char *target, const char *prefix);
 bool strIsNumeric(const char *string);
 bool strIsAlphaNumericChar(const char c);
 // char* strTrim(const char *string);
-// char** strSplit(char* source, const char delimiter[1], const int maxTokens, const int maxLength, int *tokensCount);
+char** strSplit(char* source, const char delimiter[1], const int maxTokens, const int maxLength, int *tokensCount);
 void strSubstring(const char *src, char *dst, size_t start, size_t end);
 bool strSetDelimitedTextBounds(const char* src, const char *delimiter, int *begin, int *end);
