@@ -91,6 +91,7 @@ void comLogErrorAndDie(char *msg);
 /** -- MAIN ------------- */
 
 bool validateReceivedMsg(const char *message);
+bool setMessageFromText(const char *text, Message *message);
 // Equipment getEmptyEquipment(void);
 // Command getGenericCommand(void);
 // Command getEmptyCommand(CmdCodeEnum code);

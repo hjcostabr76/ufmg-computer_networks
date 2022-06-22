@@ -140,6 +140,95 @@ void buildMessageToSend(const Message msg, char *buffer) {
 	strcat(buffer, NET_TAG_MSG); // Message
 }
 
+bool setMessageFromText(const char *text, Message *message) {
+
+    // Initialize things
+    message->id = 0;
+    message->source = 0;
+    message->target = 0;
+    message->payload = NULL;
+    message->payloadText = NULL;
+
+    const int msgSize = (int)strlen(text);
+    char *temp = (char *)malloc(msgSize);
+    temp[0] = '\0';
+    
+    // Id
+    int begin = 0;
+    int end = 0;
+
+    if (!strSetDelimitedTextBounds(text, NET_TAG_ID, &begin, &end))
+        return false;
+    strSubstring(text, temp, begin, end);
+    message->id = atoi(temp);
+
+    // Src
+    if (!strSetDelimitedTextBounds(text, NET_TAG_SRC, &begin, &end))
+        return false;
+    strSubstring(text, temp, begin, end);
+    message->source = atoi(temp);
+
+    // target
+    if (!strSetDelimitedTextBounds(text, NET_TAG_TARGET, &begin, &end))
+        return false;
+    strSubstring(text, temp, begin, end);
+    message->target = atoi(temp);
+
+    // Payload
+    if (!strSetDelimitedTextBounds(text, NET_TAG_PAYLOAD, &begin, &end))
+        return true; // NOTE: Payload is optional!
+
+    strSubstring(text, temp, begin, end);
+    message->payloadText = (char *)malloc(strlen(temp));
+    strcpy(message->payloadText, temp);
+    
+    switch (message->id) {
+        
+        // Message types with no payload
+        case MSG_REQ_ADD:
+        case MSG_REQ_RM:
+        case MSG_REQ_INF:
+            return true;
+        
+        // Message types with integer value payloads
+        case MSG_RES_ADD:
+        case MSG_ERR:
+        case MSG_OK: {
+            message->payload = (int *)malloc(sizeof(int));
+            *(int *)message->payload = atoi(temp);
+            return true;
+
+        // Message types with float value payload
+        } case MSG_RES_INF: {
+            if (!strRegexMatch("^[0-9]+\\.[0-9]{2}$", temp, NULL))
+                return false;
+            message->payload = (float *)malloc(sizeof(float));
+            *(float *)message->payload = atof(temp);
+            return true;
+        }
+
+        // Message types with list with integers value payload
+        case MSG_RES_LIST: {
+
+            if (!strRegexMatch("^[0-9]{1,2}(,[0-9]{1,2})*$", temp, NULL))
+                return false;
+
+            int nEquipments = 0;
+            char **idStringList = strSplit(temp, ",", MAX_CONNECTIONS, 2, &nEquipments);
+            
+            message->payload = (int *)malloc(nEquipments * sizeof(int));
+            for (int i = 0; i < nEquipments; i++) {
+                ((int *)message->payload)[i] = atoi(idStringList[i]);
+            }
+            return true;
+        }
+
+        // Something wrong isn't right
+        default:
+            return false;
+    }
+}
+
 /**
  * ------------------------------------------------
  * == NETWORK =====================================
