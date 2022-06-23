@@ -53,11 +53,12 @@ void buildMessageToSend(const Message msg, char *buffer);
 bool isValidMessageId(const int id);
 bool isValidMessageSource(const MessageIdEnum msgId, const int source);
 bool isValidMessageTarget(const MessageIdEnum msgId, const int target);
+bool isValidMessagePayload(const MessageIdEnum msgId, char *payloadText, void* payload);
 
-bool parseMessagePayload(const char *text, const MessageIdEnum msgId, char *payloadText, void* payload);
-bool parseIntTypePayload(const char* payloadText, void *payload);
-bool parseFloatTypePayload(const char* payloadText, void *payload);
-bool parseIntListTypePayload(const char* payloadText, void *payload);
+void setMessagePayload(const char *text, const MessageIdEnum msgId, char *payloadText, void* payload);
+void setIntTypePayload(const char* payloadText, void *payload);
+void setFloatTypePayload(const char* payloadText, void *payload);
+void setIntListTypePayload(const char* payloadText, void *payload);
 
 /*-- Network -----------------*/
 bool netIsActionAvailable(int socket, const SocketActionEnum action, struct timeval *timeout);
@@ -148,15 +149,12 @@ void buildMessageToSend(const Message msg, char *buffer) {
 
 void setMessageFromText(const char *text, Message *message) {
 
-    // Initialize things
     message->id = 0;
     message->source = 0;
     message->target = 0;
     message->payload = NULL;
     message->payloadText = NULL;
     
-    // Parse message
-
 	message->isValid = strSetDelimitedTextBounds(text, NET_TAG_MSG, NULL, NULL);
 	if (!message->isValid)
 		return;
@@ -164,13 +162,14 @@ void setMessageFromText(const char *text, Message *message) {
 	message->id = getIntTypeMessageField(text, NET_TAG_ID);
 	message->source = getIntTypeMessageField(text, NET_TAG_SRC);
 	message->target = getIntTypeMessageField(text, NET_TAG_TARGET);
+	setMessagePayload(text, message->id, message->payloadText, message->payload);
 	
-	const bool isValidId = isValidMessageId(message->id);
-	const bool isValidSource = isValidMessageSource(message->id, message->source);
-	const bool isValidTarget = isValidMessageTarget(message->id, message->source);
-	const bool isValidPayload = parseMessagePayload(text, message->id, message->payloadText, message->payload);
-
-	message->isValid = isValidId && isValidSource && isValidTarget && isValidPayload;
+	message->isValid = (
+		isValidMessageId(message->id)
+		&& isValidMessageSource(message->id, message->source)
+		&& isValidMessageTarget(message->id, message->source)
+		&& isValidMessagePayload(message->id, message->payloadText, message->payload)
+	);
 }
 
 int getIntTypeMessageField(const char *text, const char* delimiter) {
@@ -221,12 +220,13 @@ bool isValidMessageTarget(const MessageIdEnum msgId, const int target) {
 	return (shouldHaveTarget && target) || (!shouldHaveTarget && !target);
 }
 
-bool parseMessagePayload(const char *text, const MessageIdEnum msgId, char *payloadText, void* payload) {
+void setMessagePayload(const char *text, const MessageIdEnum msgId, char *payloadText, void* payload) {
 
 	// Extract value from text
 	int begin = 0;
     int end = 0;
 
+	// Set payload text
 	bool isPayloadEmpty = !strSetDelimitedTextBounds(text, NET_TAG_PAYLOAD, &begin, &end);
 	if (!isPayloadEmpty) {
 
@@ -242,6 +242,30 @@ bool parseMessagePayload(const char *text, const MessageIdEnum msgId, char *payl
 		}
 	}
 
+	if (isPayloadEmpty)
+		return;
+
+	// Set value by type
+	const bool isIntTypePayload = msgId == MSG_RES_ADD || msgId == MSG_ERR || msgId == MSG_OK;
+	const bool isFloatTypePayload = msgId == MSG_RES_INF;
+	const bool isIntListTypePayload = msgId == MSG_RES_LIST;
+	
+	if (isIntTypePayload)
+		setIntTypePayload(payloadText, payload);
+	else if (isFloatTypePayload)
+		setFloatTypePayload(payloadText, payload);
+	else if (isIntListTypePayload)
+		setIntListTypePayload(payloadText, payload);
+}
+
+bool isValidMessagePayload(const MessageIdEnum msgId, char *payloadText, void* payload) {
+
+	// Validate coherence
+	bool isPayloadEmpty = payload == NULL || *(float *)payload == 0;
+	bool isPayloadTextEmpty = payloadText == NULL || strlen(payloadText) !== 0;
+	if (isPayloadEmpty != isPayloadTextEmpty)
+		return false;
+
 	/**
 	 * Validate fulfilling
 	 * NOTE: Payload is optional for MSG_RES_LIST
@@ -253,69 +277,59 @@ bool parseMessagePayload(const char *text, const MessageIdEnum msgId, char *payl
 	if (isPayloadEmpty)
 		return isValid;
 
-	// Set value by type
+	// Validate value by type
 	const bool isIntTypePayload = msgId == MSG_RES_ADD || msgId == MSG_ERR || msgId == MSG_OK;
 	const bool isFloatTypePayload = msgId == MSG_RES_INF;
 	const bool isIntListTypePayload = msgId == MSG_RES_LIST;
 	
-	if (isIntTypePayload)
-		isValid = isValid && parseIntTypePayload(payloadText, payload);
-	else if (isFloatTypePayload)
-		isValid = isValid && parseFloatTypePayload(payloadText, payload);
-	else if (isIntListTypePayload)
-		isValid = isValid && parseIntListTypePayload(payloadText, payload);
+	if (isIntTypePayload || isFloatTypePayload)
+		return *(float *)payload > 0;
 
-	return isValid;
-}
-
-bool parseIntTypePayload(const char* payloadText, void *payload) {
-	
-	if (payloadText != NULL && payload != NULL)
-		return false;
-	
-	const int aux = atoi(payloadText);
-	if (aux <= 0)
-		return false;
-	
-	payload = (int *)malloc(sizeof(int));
-	*(int *)payload = aux;
-	return true;
-}
-
-bool parseFloatTypePayload(const char* payloadText, void *payload) {
-	
-	const bool isValid = payloadText != NULL && payload != NULL && strRegexMatch("^[0-9]+\\.[0-9]{2}$", payloadText, NULL);
-	if (!isValid)
-		return false;
-
-	const float aux = atof(payloadText);
-	if (aux <= 0)
-		return false;
-
-	payload = (float *)malloc(sizeof(float));
-	*(float *)payload = aux;
-	return true;
-}
-
-bool parseIntListTypePayload(const char* payloadText, void *payload) {
-
-	bool isValid = payloadText != NULL && payload != NULL && strRegexMatch("^[0-9]{1,2}(,[0-9]{1,2})*$", payloadText, NULL);
-	if (!isValid)
+	if (!isIntListTypePayload)
 		return false;
 
 	int nEquipments = 0;
 	char **idStringList = strSplit(payloadText, ",", MAX_CONNECTIONS, 2, &nEquipments);
-	
 	payload = (int *)malloc(nEquipments * sizeof(int));
 	for (int i = 0; i < nEquipments; i++) {
-		const int aux = atoi(idStringList[i]);
-		const bool isAuxValid = aux > 0;
-		isValid = isValid && isAuxValid;
-		if (isAuxValid)
-			((int *)payload)[i] = aux;
+		isValid = isValid && *(int *)payload > 0;
+		if (!isValid)
+			break;
 	}
 
 	return isValid;
+}
+
+void setIntTypePayload(const char* payloadText, void *payload) {
+	if (payload == NULL || payloadText == NULL)
+		payload = NULL;
+	else {
+		payload = (int *)malloc(sizeof(int));
+		*(int *)payload = atoi(payloadText);
+	}
+}
+
+void setFloatTypePayload(const char* payloadText, void *payload) {
+	const bool isValid = payloadText != NULL && payload != NULL && strRegexMatch("^[0-9]+\\.[0-9]{2}$", payloadText, NULL);
+	if (!isValid)
+		payload = NULL;
+	else {
+		payload = (float *)malloc(sizeof(float));
+		*(float *)payload = atof(payloadText);
+	}
+}
+
+void setIntListTypePayload(const char* payloadText, void *payload) {
+
+	bool isValid = payloadText != NULL && payload != NULL && strRegexMatch("^[0-9]{1,2}(,[0-9]{1,2})*$", payloadText, NULL);
+	if (!isValid)
+		return payload = NULL;
+
+	int nEquipments = 0;
+	char **idStringList = strSplit(payloadText, ",", MAX_CONNECTIONS, 2, &nEquipments);
+	payload = (int *)malloc(nEquipments * sizeof(int));
+	for (int i = 0; i < nEquipments; i++)
+		((int *)payload)[i] = atoi(idStringList[i]);
 }
 
 /**
