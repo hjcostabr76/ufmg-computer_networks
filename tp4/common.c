@@ -146,21 +146,31 @@ void buildMessageToSend(const Message msg, char *buffer) {
 	strcat(buffer, NET_TAG_MSG); // Message
 }
 
-bool isValidMessageId(const int id) {
-	return (
-		id == MSG_REQ_ADD
-		|| id == MSG_REQ_RM
-		|| id == MSG_RES_ADD
-		|| id == MSG_RES_LIST
-		|| id == MSG_REQ_INF
-		|| id == MSG_RES_INF
-		|| id == MSG_ERR
-		|| id == MSG_OK
-	);
-}
+void setMessageFromText(const char *text, Message *message) {
 
-bool isValidEquipId(const int id) {
-	return id > 0 && id < MAX_CONNECTIONS;
+    // Initialize things
+    message->id = 0;
+    message->source = 0;
+    message->target = 0;
+    message->payload = NULL;
+    message->payloadText = NULL;
+    
+    // Parse message
+
+	message->isValid = strSetDelimitedTextBounds(text, NET_TAG_MSG, NULL, NULL);
+	if (!message->isValid)
+		return;
+
+	message->id = getIntTypeMessageField(text, NET_TAG_ID);
+	message->source = getIntTypeMessageField(text, NET_TAG_SRC);
+	message->target = getIntTypeMessageField(text, NET_TAG_TARGET);
+	
+	const bool isValidId = isValidMessageId(message->id);
+	const bool isValidSource = isValidMessageSource(message->id, message->source);
+	const bool isValidTarget = isValidMessageTarget(message->id, message->source);
+	const bool isValidPayload = parseMessagePayload(text, message->id, message->payloadText, message->payload);
+
+	message->isValid = isValidId && isValidSource && isValidTarget && isValidPayload;
 }
 
 int getIntTypeMessageField(const char *text, const char* delimiter) {
@@ -180,30 +190,35 @@ int getIntTypeMessageField(const char *text, const char* delimiter) {
 	return aux > 0 ? aux : 0;
 }
 
-void setMessageFromText(const char *text, Message *message) {
+bool isValidMessageId(const int id) {
+	return (
+		id == MSG_REQ_ADD
+		|| id == MSG_REQ_RM
+		|| id == MSG_RES_ADD
+		|| id == MSG_RES_LIST
+		|| id == MSG_REQ_INF
+		|| id == MSG_RES_INF
+		|| id == MSG_ERR
+		|| id == MSG_OK
+	);
+}
 
-    // Initialize things
-    message->id = 0;
-    message->source = 0;
-    message->target = 0;
-    message->payload = NULL;
-    message->payloadText = NULL;
-    
-    // Parse message
-	message->isValid = strSetDelimitedTextBounds(text, NET_TAG_MSG, NULL, NULL);
-	if (!message->isValid)
-		return;
+bool isValidEquipId(const int id) {
+	return id > 0 && id < MAX_CONNECTIONS;
+}
 
-	message->id = getIntTypeMessageField(text, NET_TAG_ID);
-	message->source = getIntTypeMessageField(text, NET_TAG_SRC);
-	message->target = getIntTypeMessageField(text, NET_TAG_TARGET);
-	
-	const bool isValidId = isValidMessageId(message->id);
-	const bool isValidSource = isValidMessageSource(message->id, message->source);
-	const bool isValidTarget = isValidMessageTarget(message->id, message->source);
-	const bool isValidPayload = parseMessagePayload(text, message->id, message->payloadText, message->payload);
+bool isValidMessageSource(const MessageIdEnum msgId, const int source) {
+	if (!isValidEquipId(source))
+		return false;
+	const bool shouldHaveSource = msgId == MSG_REQ_RM || msgId == MSG_REQ_INF || msgId == MSG_RES_INF;
+	return (shouldHaveSource && source) || (!shouldHaveSource && !source);
+}
 
-	message->isValid = isValidId && isValidSource && isValidTarget && isValidPayload;
+bool isValidMessageTarget(const MessageIdEnum msgId, const int target) {
+	if (!isValidEquipId(target))
+		return false;
+	const bool shouldHaveTarget = msgId == MSG_REQ_INF || msgId == MSG_RES_INF || msgId == MSG_ERR || msgId == MSG_OK;
+	return (shouldHaveTarget && target) || (!shouldHaveTarget && !target);
 }
 
 bool parseMessagePayload(const char *text, const MessageIdEnum msgId, char *payloadText, void* payload) {
@@ -301,20 +316,6 @@ bool parseIntListTypePayload(const char* payloadText, void *payload) {
 	}
 
 	return isValid;
-}
-
-bool isValidMessageSource(const MessageIdEnum msgId, const int source) {
-	if (!isValidEquipId(source))
-		return false;
-	const bool shouldHaveSource = msgId == MSG_REQ_RM || msgId == MSG_REQ_INF || msgId == MSG_RES_INF;
-	return (shouldHaveSource && source) || (!shouldHaveSource && !source);
-}
-
-bool isValidMessageTarget(const MessageIdEnum msgId, const int target) {
-	if (!isValidEquipId(target))
-		return false;
-	const bool shouldHaveTarget = msgId == MSG_REQ_INF || msgId == MSG_RES_INF || msgId == MSG_ERR || msgId == MSG_OK;
-	return (shouldHaveTarget && target) || (!shouldHaveTarget && !target);
 }
 
 /**
