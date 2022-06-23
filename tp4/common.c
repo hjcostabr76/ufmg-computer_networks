@@ -189,37 +189,6 @@ int getIntTypeMessageField(const char *text, const char* delimiter) {
 	return aux > 0 ? aux : 0;
 }
 
-bool isValidMessageId(const int id) {
-	return (
-		id == MSG_REQ_ADD
-		|| id == MSG_REQ_RM
-		|| id == MSG_RES_ADD
-		|| id == MSG_RES_LIST
-		|| id == MSG_REQ_INF
-		|| id == MSG_RES_INF
-		|| id == MSG_ERR
-		|| id == MSG_OK
-	);
-}
-
-bool isValidEquipId(const int id) {
-	return id > 0 && id < MAX_CONNECTIONS;
-}
-
-bool isValidMessageSource(const MessageIdEnum msgId, const int source) {
-	if (!isValidEquipId(source))
-		return false;
-	const bool shouldHaveSource = msgId == MSG_REQ_RM || msgId == MSG_REQ_INF || msgId == MSG_RES_INF;
-	return (shouldHaveSource && source) || (!shouldHaveSource && !source);
-}
-
-bool isValidMessageTarget(const MessageIdEnum msgId, const int target) {
-	if (!isValidEquipId(target))
-		return false;
-	const bool shouldHaveTarget = msgId == MSG_REQ_INF || msgId == MSG_RES_INF || msgId == MSG_ERR || msgId == MSG_OK;
-	return (shouldHaveTarget && target) || (!shouldHaveTarget && !target);
-}
-
 void setMessagePayload(const char *text, const MessageIdEnum msgId, char *payloadText, void* payload) {
 
 	// Extract value from text
@@ -256,6 +225,37 @@ void setMessagePayload(const char *text, const MessageIdEnum msgId, char *payloa
 		setFloatTypePayload(payloadText, payload);
 	else if (isIntListTypePayload)
 		setIntListTypePayload(payloadText, payload);
+}
+
+bool isValidMessageId(const int id) {
+	return (
+		id == MSG_REQ_ADD
+		|| id == MSG_REQ_RM
+		|| id == MSG_RES_ADD
+		|| id == MSG_RES_LIST
+		|| id == MSG_REQ_INF
+		|| id == MSG_RES_INF
+		|| id == MSG_ERR
+		|| id == MSG_OK
+	);
+}
+
+bool isValidEquipId(const int id) {
+	return id > 0 && id < MAX_CONNECTIONS;
+}
+
+bool isValidMessageSource(const MessageIdEnum msgId, const int source) {
+	if (!isValidEquipId(source))
+		return false;
+	const bool shouldHaveSource = msgId == MSG_REQ_RM || msgId == MSG_REQ_INF || msgId == MSG_RES_INF;
+	return (shouldHaveSource && source) || (!shouldHaveSource && !source);
+}
+
+bool isValidMessageTarget(const MessageIdEnum msgId, const int target) {
+	if (!isValidEquipId(target))
+		return false;
+	const bool shouldHaveTarget = msgId == MSG_REQ_INF || msgId == MSG_RES_INF || msgId == MSG_ERR || msgId == MSG_OK;
+	return (shouldHaveTarget && target) || (!shouldHaveTarget && !target);
 }
 
 bool isValidMessagePayload(const MessageIdEnum msgId, char *payloadText, void* payload) {
