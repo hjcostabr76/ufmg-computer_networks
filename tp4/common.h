@@ -75,6 +75,7 @@ typedef struct {
     int target;
     void *payload;
     char *payloadText;
+    bool isValid;
 } Message;
 
 /**
@@ -90,8 +91,8 @@ void comLogErrorAndDie(char *msg);
 
 /** -- MAIN ------------- */
 
-bool validateReceivedMsg(const char *message);
-bool setMessageFromText(const char *text, Message *message);
+bool isValidReceivedMsg(const char *message);
+void setMessageFromText(const char *text, Message *message);
 // Equipment getEmptyEquipment(void);
 // Command getGenericCommand(void);
 // Command getEmptyCommand(CmdCodeEnum code);
