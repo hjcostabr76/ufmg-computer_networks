@@ -167,6 +167,7 @@ bool setMessageFromText(const char *text, Message *message) {
     message->payload = NULL;
     message->payloadText = NULL;
 
+	bool isValid = true;
     const int msgSize = (int)strlen(text);
     char *temp = (char *)malloc(msgSize);
     temp[0] = '\0';
@@ -175,41 +176,62 @@ bool setMessageFromText(const char *text, Message *message) {
     int begin = 0;
     int end = 0;
 
-    if (!strSetDelimitedTextBounds(text, NET_TAG_ID, &begin, &end)){
-        return false;
-	}
-	int id = getIntTypeMessageField(text, temp, begin, end);
-	if (isValidMessageId(id))
-		return false;
-    message->id = atoi(temp);
+    if (strSetDelimitedTextBounds(text, NET_TAG_ID, &begin, &end)) {
+		int id = getIntTypeMessageField(text, temp, begin, end);
+		if (isValidMessageId(id))
+			message->id = id;
+		else
+			isValid = false;
+	} else
+		isValid = false;
+	
 
     // Src
-    if (!strSetDelimitedTextBounds(text, NET_TAG_SRC, &begin, &end)){
-        return false;
-	}
-	int src = getIntTypeMessageField(text, temp, begin, end);
-	if (isValidEquipId(src))
-		return false;
-    message->source = src;
+    if (strSetDelimitedTextBounds(text, NET_TAG_SRC, &begin, &end)){
+		int src = getIntTypeMessageField(text, temp, begin, end);
+		if (isValidEquipId(src))
+			message->source = src;
+		else
+			isValid = false;
+	} else
+		isValid = false;
 
-    // target
+    // Target
     if (!strSetDelimitedTextBounds(text, NET_TAG_TARGET, &begin, &end)){
-        return false;
-	}
-	int target = getIntTypeMessageField(text, temp, begin, end);
-	if (isValidEquipId(target))
-		return false;
-    message->target = target;
+        int target = getIntTypeMessageField(text, temp, begin, end);
+		if (isValidEquipId(target))
+			message->target = target;
+		else
+		isValid = false;
+	} else
+		isValid = false;
 
-    // Payload
+    // Payload (optional or MSG_RES_LIST)
+	const bool shouldPayloadBeEmpty = {
+		message->id == MSG_REQ_ADD
+		|| message->id == MSG_REQ_RM
+		|| message->id == MSG_REQ_INF
+	};
+
+	const bool shouldPayloadBeFilled = {
+		message->id == MSG_RES_ADD
+		|| message->id == MSG_RES_INF
+		|| message->id == MSG_ERR
+		|| message->id == MSG_OK
+	};
+
 	// printf("\nsetMessageFromText [Payload] 1");
-    if (!strSetDelimitedTextBounds(text, NET_TAG_PAYLOAD, &begin, &end)) {
-        return true; // NOTE: Payload is optional!
-	}
+	const bool isPayloadEmpty = strSetDelimitedTextBounds(text, NET_TAG_PAYLOAD, &begin, &end);
+	const bool isPayloadOk = (isPayloadEmpty && !shouldPayloadBeEmpty) || (!isPayloadEmpty && shouldPayloadBeFilled);
+	if (!isPayloadOk)
+		isValid = false;
+
 	// printf("\nsetMessageFromText [Payload] 2");
-    strSubstring(text, temp, begin, end);
-    message->payloadText = (char *)malloc(strlen(temp));
-    strcpy(message->payloadText, temp);
+	if (!isPayloadEmpty) {
+		// strSubstring(text, temp, begin, end);
+		// message->payloadText = (char *)malloc(strlen(temp));
+		strcpy(message->payloadText, temp);
+	}
     
 	// printf("\nsetMessageFromText [Payload] 3");
     switch (message->id) {
@@ -219,40 +241,55 @@ bool setMessageFromText(const char *text, Message *message) {
         case MSG_REQ_RM:
         case MSG_REQ_INF:
 			// printf("\nsetMessageFromText [Payload] 4");
-            return true;
+            break;
         
         // Message types with integer value payloads
         case MSG_RES_ADD:
         case MSG_ERR:
         case MSG_OK: {
 			// printf("\nsetMessageFromText [Payload] 5");
-            message->payload = (int *)malloc(sizeof(int));
-			// printf("\nsetMessageFromText [Payload] 5.1");
-            *(int *)message->payload = atoi(temp);
-			// printf("\nsetMessageFromText [Payload] 5.2");
-            return true;
+			if (!isPayloadEmpty) {
+				message->payload = (int *)malloc(sizeof(int));
+				// printf("\nsetMessageFromText [Payload] 5.1");
+				*(int *)message->payload = atoi(message->payloadText);
+				// printf("\nsetMessageFromText [Payload] 5.2");
+			}
+            break;
 
         // Message types with float value payload
         } case MSG_RES_INF: {
+
+			if (isPayloadEmpty)
+				break;
+
 			// printf("\nsetMessageFromText [Payload] 6");
-            if (!strRegexMatch("^[0-9]+\\.[0-9]{2}$", temp, NULL))
-                return false;
+            if (!strRegexMatch("^[0-9]+\\.[0-9]{2}$", message->payloadText, NULL)) {
+				isValid = false;
+                break;
+			}
+			
 			// printf("\nsetMessageFromText [Payload] 6.1");
             message->payload = (float *)malloc(sizeof(float));
 			// printf("\nsetMessageFromText [Payload] 6.2");
-            *(float *)message->payload = atof(temp);
-            return true;
+            *(float *)message->payload = atof(message->payloadText);
+            break;
         }
 
         // Message types with list with integers value payload
         case MSG_RES_LIST: {
 			// printf("\nsetMessageFromText [Payload] 7");
-            if (!strRegexMatch("^[0-9]{1,2}(,[0-9]{1,2})*$", temp, NULL))
-                return false;
+			if (isPayloadEmpty)
+				break;
 
 			// printf("\nsetMessageFromText [Payload] 7.1");
+            if (!strRegexMatch("^[0-9]{1,2}(,[0-9]{1,2})*$", message->payloadText, NULL)) {
+				isValid = false;
+				break;
+			}
+
+			// printf("\nsetMessageFromText [Payload] 7.2");
             int nEquipments = 0;
-            char **idStringList = strSplit(temp, ",", MAX_CONNECTIONS, 2, &nEquipments);
+            char **idStringList = strSplit(message->payloadText, ",", MAX_CONNECTIONS, 2, &nEquipments);
             
 			// printf("\nsetMessageFromText [Payload] 7.2");
             message->payload = (int *)malloc(nEquipments * sizeof(int));
@@ -260,14 +297,17 @@ bool setMessageFromText(const char *text, Message *message) {
 				// printf("\nsetMessageFromText [Payload] 7.3.%d", i);
                 ((int *)message->payload)[i] = atoi(idStringList[i]);
             }
-            return true;
+            break;
         }
 
         // Something wrong isn't right
         default:
 			// printf("\nsetMessageFromText [Payload] 7.4");
-            return false;
+            isValid = false;
+			break;
     }
+
+	return isValid;
 }
 
 /**
