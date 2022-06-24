@@ -1,21 +1,9 @@
 #include "common.h"
+#include "test_utils.h"
 
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-
-#define DEBUG_TEST_ENABLE false
-
-typedef struct {
-    int nTests;
-    int nFailures;
-} TestResult;
-
-typedef struct {
-    int nTests;
-    int nFailures;
-    TestResult tests[20];
-} TestBatchResult;
 
 typedef struct {
     char *title;
@@ -28,43 +16,6 @@ typedef struct {
     int payloadListLength;
 } ExtractionTest;
 
-void tstDebugStep(const char* msgOrTemplate, void *param1, void *param2, void *param3, void *param4, void *param5) {
-
-    if (!DEBUG_TEST_ENABLE)
-		return;
-
-    const char prefix[] = "\n[log: test] ";
-
-    if (param5 != NULL) {
-        assert(param1 != NULL && param2 != NULL && param3 != NULL && param4 != NULL);
-        printf(prefix);
-        printf(msgOrTemplate, *(int *)param1, *(int *)param2, *(int *)param3, *(int *)param4, *(int *)param5);
-    
-    } else if (param4 != NULL) {
-        assert(param1 != NULL && param2 != NULL && param3 != NULL);
-        printf(prefix);
-        printf(msgOrTemplate, *(int *)param1, *(int *)param2, *(int *)param3, *(int *)param4);
-
-    } else if (param3 != NULL) {
-        assert(param1 != NULL && param2 != NULL);
-        printf(prefix);
-        printf(msgOrTemplate, *(int *)param1, *(int *)param2, *(int *)param3);
-
-    } else if (param2 != NULL) {
-        assert(param1 != NULL);
-        printf(prefix);
-        printf(msgOrTemplate, *(int *)param1, *(int *)param2);
-
-    } else if (param1 != NULL) {
-        printf(prefix);
-        printf(msgOrTemplate, *(int *)param1);
-
-    } else {
-        printf(prefix);
-        printf("%s", msgOrTemplate);
-    }
-}
-
 TestResult tstMsgPatternValidationBatch(const char **messages, const int nTests, const bool isValidMessage, const char *title) {
 
     char testType[15] = "";
@@ -75,7 +26,7 @@ TestResult tstMsgPatternValidationBatch(const char **messages, const int nTests,
     for (int i = 0; i < nTests; i++) {
         
         printf("\nTesting %s pattern:\n\t\"%s\"...", testType, messages[i]);
-        const bool passedValidation = validateReceivedMsg(messages[i]);
+        const bool passedValidation = isValidReceivedMsg(messages[i]);
         const bool isSuccess = (passedValidation && isValidMessage) || (!passedValidation && !isValidMessage);
         if (!isSuccess) {
             nFailures++;
@@ -213,22 +164,19 @@ TestResult tstMsgPatternValidation(void) {
     return finalResult;
 }
 
-TestResult tstMsgExtractionBatch(const ExtractionTest tests[], const int nTests, const bool isValidCase, const char *title) {
-
-    char testType[15] = "";
-    strcpy(testType, isValidCase ? "Good\0" : "Bad\0");
+TestResult tstMsgExtractionBatch(const ExtractionTest tests[], const int nTests, const bool shouldFail, const char *title) {
     printf("\n\n----- New Test: %s ------------------------------", title);
     
     int nFailures = 0;
     for (int i = 0; i < nTests; i++) {
         
         const ExtractionTest test = tests[i];
-        printf("\nTesting %s pattern: \"%s\"\n\"%s\"...", testType, test.title, test.messageText);
+        printf("\nTesting pattern: \"%s\"\n\t\"%s\"...", test.title, test.messageText);
         
         // Run extraction
         Message message;
-        bool isParsingOk = setMessageFromText(test.messageText, &message);
-        tstDebugStep("testMsgExtractionBatch [%d] 1", &i, NULL, NULL, NULL, NULL);
+        setMessageFromText(test.messageText, &message);
+        tstDebugStep("testMsgExtractionBatch [%d] 1", tstInt(i), NULL, NULL);
         
         // Validate result payload
         const bool isValidPayloadTxt = (
@@ -239,7 +187,7 @@ TestResult tstMsgExtractionBatch(const ExtractionTest tests[], const int nTests,
                 && strcmp(message.payloadText, test.expectedResult.payloadText) == 0
             )
         );
-        tstDebugStep("testMsgExtractionBatch [%d] 2", &i, NULL, NULL, NULL, NULL);
+        tstDebugStep("testMsgExtractionBatch [%d] 2 | %d", tstInt(i), tstBool(isValidPayloadTxt), NULL);
         
         bool isValidEmptyPayload = false;
         bool isValidPayloadFloat = false;
@@ -262,7 +210,6 @@ TestResult tstMsgExtractionBatch(const ExtractionTest tests[], const int nTests,
                     break;
             }
         }
-        tstDebugStep("testMsgExtractionBatch [%d] 3", &i, NULL, NULL, NULL, NULL);
 
         const bool isValidPayload = (
             isValidPayloadTxt
@@ -276,17 +223,28 @@ TestResult tstMsgExtractionBatch(const ExtractionTest tests[], const int nTests,
 
         // Validate the whole thing
         const bool isSuccess = (
-            (!isParsingOk && !isValidCase)
+            (!message.isValid && shouldFail)
             || (
-                isParsingOk
-                // && isValidCase
+                message.isValid
+                && !shouldFail
                 && message.id == test.expectedResult.id
                 && message.source == test.expectedResult.source
                 && message.target == test.expectedResult.target
                 && isValidPayload
             )
         );
-        tstDebugStep("testMsgExtractionBatch [%d] 4", &i, NULL, NULL, NULL, NULL);
+        tstDebugStep(
+            "testMsgExtractionBatch [%d] 3.1 | isValidEmptyPayload: '%d', isValidPayloadFloat: '%d'",
+            tstInt(i), tstBool(isValidEmptyPayload), tstBool(isValidPayloadFloat)
+        );
+        tstDebugStep(
+            "testMsgExtractionBatch [%d] 3.2 | isValidPayloadInt: '%d', isValidPayloadIntList: '%d'",
+            tstInt(i), tstBool(isValidPayloadInt), tstBool(isValidPayloadIntList)
+        );
+        tstDebugStep(
+            "testMsgExtractionBatch [%d] 3.3 | isValidPayload: '%d', isValidPayloadTxt: '%d'",
+            tstInt(i), tstBool(isValidPayload), tstBool(isValidPayloadTxt)
+        );
 
         // Exhibit result
         char resultMsg[10];
@@ -295,22 +253,23 @@ TestResult tstMsgExtractionBatch(const ExtractionTest tests[], const int nTests,
 
         const bool showDetails = test.isVerbose || !isSuccess;
         if (showDetails) {
-            tstDebugStep("testMsgExtractionBatch [%d] 5", &i, NULL, NULL, NULL, NULL);
+            tstDebugStep("testMsgExtractionBatch [%d] 4 showDetails: '%d'", tstInt(i), tstBool(showDetails), NULL);
             
             // Print actual header
             printf("\n\n\t--- What came: -------------------");
+            printf("\n\tmessage.isValid: '%d'", message.isValid);
             printf("\n\tmessage.id: '%d'", message.id);
             printf("\n\tmessage.source: '%d'", message.source);
             printf("\n\tmessage.target: '%d'", message.target);
             
-            tstDebugStep("testMsgExtractionBatch [%d] 6", &i, NULL, NULL, NULL, NULL);
+            tstDebugStep("testMsgExtractionBatch [%d] 5", tstInt(i), NULL, NULL);
             
             if (message.payloadText == NULL)
                     printf("\n\tmessage.payloadText: 'NULL'");
-                else {
-                    printf("\n\tmessage.payloadText: '%s'", message.payloadText);
-                }
-            tstDebugStep("testMsgExtractionBatch [%d] 7", &i, NULL, NULL, NULL, NULL);
+            else {
+                printf("\n\tmessage.payloadText: '%s'", message.payloadText);
+            }
+            tstDebugStep("testMsgExtractionBatch [%d] 6", tstInt(i), NULL, NULL);
 
             // Print actual payload
             if (message.payload == NULL) // Empty
@@ -329,22 +288,23 @@ TestResult tstMsgExtractionBatch(const ExtractionTest tests[], const int nTests,
             } else {
                 printf("\n\tmessage.payload: 'BAD STUFF'");
             }
-            tstDebugStep("testMsgExtractionBatch [%d] 8", &i, NULL, NULL, NULL, NULL);
+            tstDebugStep("testMsgExtractionBatch [%d] 7", tstInt(i), NULL, NULL);
 
             // Print expected header
             printf("\n\n\t--- What was supposed to come: ---");
+            printf("\n\ttest.expectedResult.isValid: '%d'", test.expectedResult.isValid);
             printf("\n\ttest.expectedResult.id: '%d'", test.expectedResult.id);
             printf("\n\ttest.expectedResult.source: '%d'", test.expectedResult.source);
             printf("\n\ttest.expectedResult.target: '%d'", test.expectedResult.target);
 
-            tstDebugStep("testMsgExtractionBatch [%d] 9", &i, NULL, NULL, NULL, NULL);
+            tstDebugStep("testMsgExtractionBatch [%d] 8", tstInt(i), NULL, NULL);
 
             if (test.expectedResult.payloadText == NULL)
                 printf("\n\ttest.expectedResult.payloadText: 'NULL'");
             else {
                 printf("\n\ttest.expectedResult.payloadText: '%s'", test.expectedResult.payloadText);
             }
-            tstDebugStep("testMsgExtractionBatch [%d] 10", &i, NULL, NULL, NULL, NULL);
+            tstDebugStep("testMsgExtractionBatch [%d] 9", tstInt(i), NULL, NULL);
 
             // Print expected payload
             if (test.expectedResult.payload == NULL) // Empty
@@ -361,11 +321,11 @@ TestResult tstMsgExtractionBatch(const ExtractionTest tests[], const int nTests,
                 for (int i = 0; i < test.payloadListLength; i++)
                     printf("'%d'; ", ((int *)test.expectedResult.payload)[i]);
             }
-            tstDebugStep("testMsgExtractionBatch [%d] 11", &i, NULL, NULL, NULL, NULL);
+            tstDebugStep("testMsgExtractionBatch [%d] 10", tstInt(i), NULL, NULL);
 
             // Explain how payload is wrong
             if (!isValidPayload) {
-                tstDebugStep("testMsgExtractionBatch [%d] 12", &i, NULL, NULL, NULL, NULL);
+                tstDebugStep("testMsgExtractionBatch [%d] 11 (!isValidPayload...)", tstInt(i), NULL, NULL);
 
                 printf("\n\n\t--- How did payload went bad: ----");
                 printf("\n\tisValidPayload: %d", isValidPayload);
@@ -375,7 +335,7 @@ TestResult tstMsgExtractionBatch(const ExtractionTest tests[], const int nTests,
                 printf("\n\tisValidPayloadInt: %d", isValidPayloadInt);
                 printf("\n\tisValidPayloadIntList: %d", isValidPayloadIntList);
             }
-            tstDebugStep("testMsgExtractionBatch [%d] 13", &i, NULL, NULL, NULL, NULL);
+            tstDebugStep("testMsgExtractionBatch [%d] 12", tstInt(i), NULL, NULL);
 
             // Compute result
             printf("\n");
@@ -383,7 +343,7 @@ TestResult tstMsgExtractionBatch(const ExtractionTest tests[], const int nTests,
                 nFailures++;
         }
     }
-    tstDebugStep("testMsgExtractionBatch 15", NULL, NULL, NULL, NULL, NULL);
+    tstDebugStep("testMsgExtractionBatch -- the end --", NULL, NULL, NULL);
     
     printf("\n");
 
@@ -548,7 +508,7 @@ TestResult tstMsgExtraction(void) {
     i++;
 
     /* - New Test ----------------------- */
-    goodTests[i].title = "Valid MSG_ERR";
+    goodTests[i].title = "Valid MSG_OK";
     goodTests[i].isVerbose = isVerbose;
     goodTests[i].messageText = "<msg><src>13<src><target>11<target><msg>";
     
@@ -567,10 +527,10 @@ TestResult tstMsgExtraction(void) {
     i++;
 
     /* >> Test em'all! ------------------------>> */
-    // aux = tstMsgExtractionBatch(goodTests, i, isValid, "Good");
-    // finalResult.nFailures += aux.nFailures;
-    // finalResult.nTests += aux.nTests;
-    // printf("\n");
+    aux = tstMsgExtractionBatch(goodTests, i, isValid, "Good");
+    finalResult.nFailures += aux.nFailures;
+    finalResult.nTests += aux.nTests;
+    printf("\n");
 
     /* ================================================================ */
     /* ---  BAD Tests: General ---------------------------------------- */
