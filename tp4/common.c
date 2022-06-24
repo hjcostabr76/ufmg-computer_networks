@@ -51,14 +51,17 @@ void initProtocolMessagesValidator();
 void buildMessageToSend(const Message msg, char *buffer);
 
 bool isValidMessageId(const int id);
+bool isValidEquipId(const int id);
 bool isValidMessageSource(const MessageIdEnum msgId, const int source);
 bool isValidMessageTarget(const MessageIdEnum msgId, const int target);
 bool isValidMessagePayload(const MessageIdEnum msgId, char *payloadText, void* payload);
 
+int getIntTypeMessageField(const char *text, const char* delimiter);
+
 void setMessagePayload(const char *text, const MessageIdEnum msgId, char *payloadText, void* payload);
 void setIntTypePayload(const char* payloadText, void *payload);
 void setFloatTypePayload(const char* payloadText, void *payload);
-void setIntListTypePayload(const char* payloadText, void *payload);
+void setIntListTypePayload(char* payloadText, void *payload);
 
 /*-- Network -----------------*/
 bool netIsActionAvailable(int socket, const SocketActionEnum action, struct timeval *timeout);
@@ -262,7 +265,7 @@ bool isValidMessagePayload(const MessageIdEnum msgId, char *payloadText, void* p
 
 	// Validate coherence
 	bool isPayloadEmpty = payload == NULL || *(float *)payload == 0;
-	bool isPayloadTextEmpty = payloadText == NULL || strlen(payloadText) !== 0;
+	bool isPayloadTextEmpty = payloadText == NULL || strlen(payloadText) != 0;
 	if (isPayloadEmpty != isPayloadTextEmpty)
 		return false;
 
@@ -289,7 +292,6 @@ bool isValidMessagePayload(const MessageIdEnum msgId, char *payloadText, void* p
 		return false;
 
 	int nEquipments = 0;
-	char **idStringList = strSplit(payloadText, ",", MAX_CONNECTIONS, 2, &nEquipments);
 	payload = (int *)malloc(nEquipments * sizeof(int));
 	for (int i = 0; i < nEquipments; i++) {
 		isValid = isValid && *(int *)payload > 0;
@@ -319,14 +321,16 @@ void setFloatTypePayload(const char* payloadText, void *payload) {
 	}
 }
 
-void setIntListTypePayload(const char* payloadText, void *payload) {
+void setIntListTypePayload(char* payloadText, void *payload) {
 
-	bool isValid = payloadText != NULL && payload != NULL && strRegexMatch("^[0-9]{1,2}(,[0-9]{1,2})*$", payloadText, NULL);
-	if (!isValid)
-		return payload = NULL;
+	bool isValid = payloadText != NULL && payload != NULL && strRegexMatch("^([0-9]{1,2}(,[0-9]{1,2})*)?$", payloadText, NULL);
+	if (!isValid) {
+		payload = NULL;
+		return;
+	}
 
 	int nEquipments = 0;
-	char **idStringList = strSplit(payloadText, ",", MAX_CONNECTIONS, 2, &nEquipments);
+	char **idStringList = strSplit(payloadText, ',', MAX_CONNECTIONS, 2, &nEquipments);
 	payload = (int *)malloc(nEquipments * sizeof(int));
 	for (int i = 0; i < nEquipments; i++)
 		((int *)payload)[i] = atoi(idStringList[i]);
@@ -702,7 +706,6 @@ bool strSetDelimitedTextBounds(const char* src, const char *delimiter, int *begi
 	// Free some memory
 	if (noBegin)
 		free(begin);
-	const bool noEnd = end == NULL;
 	if (noEnd)
 		free(end);
 
@@ -710,12 +713,12 @@ bool strSetDelimitedTextBounds(const char* src, const char *delimiter, int *begi
 	return isSuccess;
 }
 
-char** strSplit(char* source, const char delimiter[1], const int maxTokens, const int maxLength, int *tokensCount) {
+char** strSplit(char* source, const char delimiter, const int maxTokens, const int maxLength, int *tokensCount) {
     
     *tokensCount = 0;
     char** tokens = malloc(maxTokens * sizeof(char*));
     
-    char *token = strtok(source, delimiter);
+    char *token = strtok(source, &delimiter);
     if (token == NULL)
         return tokens;
 
@@ -726,7 +729,7 @@ char** strSplit(char* source, const char delimiter[1], const int maxTokens, cons
         strcpy(tokens[*tokensCount], token);
         
         *tokensCount = *tokensCount + 1;
-        token = strtok(NULL, delimiter);
+        token = strtok(NULL, &delimiter);
     }
 
     return tokens;
