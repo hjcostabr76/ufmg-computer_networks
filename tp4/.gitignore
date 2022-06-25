@@ -2,3 +2,4 @@ common
 equipment
 server
 tests
+tests_memcheck

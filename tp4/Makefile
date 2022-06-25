@@ -1,5 +1,6 @@
 CC = gcc
 CFLAGS = -W -Wall -g -Wextra
+FLAGS_DBG = ${CFLAGS} -g -o0
 
 all: obj_common.o obj_server.o obj_equipment.o
 	$(CC) $(CFLAGS) -o server obj_common.o obj_server.o -lpthread
@@ -8,6 +9,10 @@ all: obj_common.o obj_server.o obj_equipment.o
 tests: obj_common.o obj_test_utils.o obj_tests.o
 	$(CC) $(CFLAGS) -o tests obj_common.o obj_test_utils.o obj_tests.o
 	$(CC) $(CFLAGS) -o equipment obj_common.o obj_equipment.o
+
+memcheck_tests: obj_common.o obj_test_utils.o obj_tests.o
+	$(CC) $(FLAGS_DBG) -o tests_memcheck obj_common.o obj_test_utils.o obj_tests.o
+	$(CC) $(FLAGS_DBG) -o equipment obj_common.o obj_equipment.o
 
 #################################################################################
 
