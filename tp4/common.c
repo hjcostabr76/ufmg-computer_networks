@@ -709,12 +709,14 @@ bool strSetDelimitedTextBounds(const char* src, const char *delimiter, int *begi
 	return isSuccess;
 }
 
-char** strSplit(char* source, const char delimiter, const int maxTokens, const int maxLength, int *tokensCount) {
+char** strSplit(const char* source, const char delimiter, const int maxTokens, const int maxLength, int *tokensCount) {
     
     *tokensCount = 0;
     char** tokens = malloc(maxTokens * sizeof(char*));
-    
-    char *token = strtok(source, &delimiter);
+	char *aux = (char *)malloc(strlen(source));
+	strcpy(aux, source);
+
+    char *token = strtok(aux, &delimiter);
     if (token == NULL)
         return tokens;
 
