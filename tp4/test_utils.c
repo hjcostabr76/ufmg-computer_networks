@@ -41,8 +41,7 @@ void tstDebugStep(const char* msgOrTemplate, const void *param1, const void *par
     }
 }
 
-int* tstBool(bool v) {
-    int* aux = (int *)malloc(sizeof(int));
-    *aux = v ? 1 : 0;
+char* tstBool(bool v) {
+    char* aux = v ? "1" : "0";
     return aux;
 }

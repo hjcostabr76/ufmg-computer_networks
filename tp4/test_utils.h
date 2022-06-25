@@ -30,4 +30,4 @@ typedef struct {
  */
 
 void tstDebugStep(const char* msgOrTemplate, const void *param1, const void *param2, const void *param3, const void *param4, const void *param5);
-int* tstBool(bool v);
+char* tstBool(bool v);

@@ -166,13 +166,18 @@ void setMessageFromText(const char *text, Message *message) {
 	message->source = getIntTypeMessageField(text, NET_TAG_SRC);
 	message->target = getIntTypeMessageField(text, NET_TAG_TARGET);
 	setMessagePayload(text, message->id, &message->payloadText, &message->payload);
+	
+	const bool isValidId = isValidMessageId(message->id);
+	const bool isValidSource = isValidMessageSource(message->id, message->source);
+	const bool isValidTarget = isValidMessageTarget(message->id, message->target);
+	const bool isValidPayload = isValidMessagePayload(message->id, message->payloadText, message->payload);
 
-	message->isValid = (
-		isValidMessageId(message->id)
-		&& isValidMessageSource(message->id, message->source)
-		&& isValidMessageTarget(message->id, message->target)
-		&& isValidMessagePayload(message->id, message->payloadText, message->payload)
-	);
+
+	message->id = isValidId ? message->id : 0;
+	message->source = isValidSource ? message->source : 0;
+	message->target = isValidTarget ? message->target : 0;
+	message->payload = isValidPayload ? message->payload : NULL;
+	message->isValid = isValidId && isValidSource && isValidTarget && isValidPayload;
 }
 
 int getIntTypeMessageField(const char *text, const char* delimiter) {
