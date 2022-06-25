@@ -184,7 +184,7 @@ int getIntTypeMessageField(const char *text, const char* delimiter) {
 		return 0;
 
 	const int msgSize = (int)strlen(text);
-    char *temp = (char *)malloc(msgSize);
+    char *temp = (char *)malloc(msgSize + 1);
     temp[0] = '\0';
 	strSubstring(text, temp, begin, end);
 	
@@ -203,13 +203,13 @@ void setMessagePayload(const char *text, const MessageIdEnum msgId, char **paylo
 	if (!isPayloadEmpty) {
 
 		const int msgSize = (int)strlen(text);
-		char *temp = (char *)malloc(msgSize);
+		char *temp = (char *)malloc(msgSize + 1);
 		temp[0] = '\0';
 		strSubstring(text, temp, begin, end);
 
 		isPayloadEmpty = !strlen(temp);
 		if (!isPayloadEmpty) {
-			*payloadText = (char *)malloc(strlen(temp));
+			*payloadText = (char *)malloc(strlen(temp) + 1);
 			strcpy(*payloadText, temp);
 		}
 	}
@@ -672,7 +672,7 @@ bool strSetDelimitedTextBounds(const char* src, const char *delimiter, int *begi
     *end = -1;
 
     int i = 0;
-    char *temp = (char *)malloc(msgSize);
+    char *temp = (char *)malloc(msgSize + 1);
     temp[0] = '\0';
 
     do {
@@ -722,8 +722,9 @@ char** strSplit(const char* source, const char delimiter, const int maxTokens, c
 
     while (token != NULL && *tokensCount < maxTokens) {
 
-        tokens[*tokensCount] = malloc(maxLength * sizeof(char));
-        memset(tokens[*tokensCount], '\n', maxLength * sizeof(char));
+		const int allocSize = maxLength + 1;
+        tokens[*tokensCount] = malloc(allocSize);
+        memset(tokens[*tokensCount], 0, allocSize);
         strcpy(tokens[*tokensCount], token);
         
         *tokensCount = *tokensCount + 1;
@@ -765,7 +766,7 @@ bool strRegexMatch(const char* pattern, const char* str, char errorMsg[100]) {
 // char* strTrim(const char* input) {
 
 // 	// Left trim
-// 	char* trimmed = (char *)malloc(strlen(input));
+// 	char* trimmed = (char *)malloc(strlen(input + 1));
 //     while (isspace(*trimmed)) trimmed++;
     
 // 	// Right trim
