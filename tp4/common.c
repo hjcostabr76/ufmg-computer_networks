@@ -36,7 +36,13 @@ const char* NET_TAG_SRC = "<src>";
 const char* NET_TAG_TARGET = "<target>";
 const char* NET_TAG_PAYLOAD = "<payload>";
 
-const char* CMD_NAME[CMD_COUNT] = { "close connection", "list equipment", "request information from" };
+const char* CMD_NAMES[CMD_COUNT] = { "close connection", "list equipment", "request information from" };
+const char* ERR_NAMES[ERR_COUNT] = {
+	"Equipment not found",
+	"Source equipment not found",
+	"Target equipment not found",
+	"Equipment limit exceeded"
+};
 
 typedef enum { SOCK_ACTION_RD = 10, SOCK_ACTION_WT } SocketActionEnum;
 
@@ -49,9 +55,9 @@ typedef enum { SOCK_ACTION_RD = 10, SOCK_ACTION_WT } SocketActionEnum;
 /*-- Main --------------------*/
 void initProtocolMessagesValidator();
 
-bool isIntTypePayload(msgId);
-bool isFloatTypePayload(msgId);
-bool isIntListTypePayload(msgId);
+bool isIntTypePayload(const int msgId);
+bool isFloatTypePayload(const int msgId);
+bool isIntListTypePayload(const int msgId);
 
 bool isValidMessageId(const int id);
 bool isValidEquipId(const int id);
@@ -102,7 +108,7 @@ char* comDbgBool(bool v) {
     return aux;
 }
 
-void comDebugMessage(const Message msg, const PayloadDescription *payloadDesc) {
+void comDebugMessage(const Message msg, PayloadDescription *payloadDesc) {
 
 	if (!DEBUG_ENABLE)
 		return;
@@ -118,22 +124,23 @@ void comDebugMessage(const Message msg, const PayloadDescription *payloadDesc) {
         printf("\n\tmessage.payloadText: '%s'", msg.payloadText);
 
     // Print payload
-    if (msg.payload == NULL)
+    if (msg.payload == NULL) {
         printf("\n\tmessage.payload: 'NULL'");
+	}
 
 	const bool hasNoDesc = payloadDesc == NULL;
 	if (hasNoDesc) {
 		payloadDesc = (PayloadDescription *)malloc(sizeof(PayloadDescription));
-		payloadDesc->isInt = setIntTypePayload(msg.payloadText, msg.payload);
-		payloadDesc->isFloat = setFloatTypePayload(msg.payloadText, msg.payload);
-		payloadDesc->isIntList = setIntListTypePayload(msg.payloadText, msg.payload);
+		payloadDesc->isInt = isIntTypePayload(msg.id);
+		payloadDesc->isFloat = isFloatTypePayload(msg.id);
+		payloadDesc->isIntList = isIntListTypePayload(msg.id);
 	}
     
     if (payloadDesc->isFloat)
         printf("\n\tmessage.payload: '%.2f'", *(float *)msg.payload);
     if (payloadDesc->isInt)
         printf("\n\tmessage.payload: '%d'", *(int *)msg.payload);
-    else if (payloadDesc->isIntList)
+    else if (payloadDesc->isIntList) {
         const char *aux = getIntListTypePayloadAsString((int *)msg.payload, msg.payloadSize);
 		printf("\n\tmessage.payload: '%s'", aux);
     }
@@ -178,15 +185,15 @@ bool isValidReceivedMsg(const char *message) {
     return strRegexMatch(PROTOCOL_PATTERN, message, NULL);
 }
 
-bool isIntTypePayload(msgId) {
+bool isIntTypePayload(const int msgId) {
 	return msgId == MSG_RES_ADD || msgId == MSG_ERR || msgId == MSG_OK;
 }
 
-bool isFloatTypePayload(msgId) {
+bool isFloatTypePayload(const int msgId) {
 	return msgId == MSG_RES_INF;
 }
 
-bool isIntListTypePayload(msgId) {
+bool isIntListTypePayload(const int msgId) {
 	return msgId == MSG_RES_LIST;
 }
 
@@ -273,14 +280,14 @@ bool buildMessageToSend(Message msg, char *buffer, const int bufferSize) {
 char* getIntListTypePayloadAsString(const int payloadList[], const int payloadSize) {
 
 	const size_t length = payloadSize * sizeof(int);
-	const char* result = (char *)malloc(length + 1);
-	const char* aux = (char *)malloc(length + 1);
+	char* result = (char *)malloc(length + 1);
+	char* aux = (char *)malloc(length + 1);
 
 	result[0] = '\0';
 	aux[0] = '\0';
 
 	for (int i = 0; i < payloadSize; i++) {
-		const int id = atoi(payloadList[i]);
+		const int id = payloadList[i];
 		if (i == 0)
 			sprintf(result, "%d", id);
 		else {

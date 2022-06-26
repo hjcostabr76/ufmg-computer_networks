@@ -283,7 +283,7 @@ void servAddEquipment(const int clientSocket) {
     servBroadcast(msg);
     
     // Log
-    printf("\nEquipment '%d' added\n", newEquipment.id); // NOTE: This really should be printed
+    printf("\nEquipment %d added\n", newEquipment.id); // NOTE: This really should be printed
 }
 
 void serverCloseThreadOnError(const Equipment *client, const char *errMsg) {

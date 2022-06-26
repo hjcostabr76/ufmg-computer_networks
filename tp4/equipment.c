@@ -21,7 +21,7 @@ void cliExplainAndDie(char **argv);
 char* cliGetCleanInput(char* input);
 int cliGetCommandFromInput(const char* input);
 
-void cliSendCommand(const int socket, const char* input, char *answer);
+Message cliSendMessage(const int socket, const Message requestMsg);
 int cliRequestToGetIn(const int socket);
 
 /**
@@ -30,6 +30,7 @@ int cliRequestToGetIn(const int socket);
  * ------------------------------------------------
  */
 
+int myId = 0;
 int nEquipments = 0;
 bool equipments[MAX_CONNECTIONS] = { false };
 
@@ -58,11 +59,14 @@ int main(int argc, char **argv) {
 	}
 
 	// Get in the network
-	if (!cliRequestToGetIn(sock)) {
+	myId = cliRequestToGetIn(sock);
+	if (!myId) {
 		close(sock);
 		comLogErrorAndDie("Failure as trying to get in the network");
 	}
+	printf("\nNew ID: %d\n", myId); // NOTE: This really should be printed
 
+	// Handle terminal commands...
 	while (true) {
 
 		// Wait for command
@@ -80,14 +84,20 @@ int main(int argc, char **argv) {
 		}
 
 		CommandCodeEnum cmdCode = cliGetCommandFromInput(input);
-		printf("\n Command detected: '%d'\n", cmdCode);
+		if (DEBUG_ENABLE) {
+			const char auxTemplate[] = "Command detected: '%d'";
+			char *aux = (char *)malloc(strlen(input) + strlen(auxTemplate) + 1);
+			sprintf(aux, auxTemplate, cmdCode);
+			cliDebugStep(aux);
+			free(aux);
+		}
 
 		// Send command
 		// char answer[BUF_SIZE];
 		// cliSendCommand(sock, input, answer);
 
 		// Finish execution
-		// if (strcmp(answer, CMD_NAME[CMD_CODE_KILL]) == 0)
+		// if (strcmp(answer, CMD_NAMES[CMD_CODE_KILL]) == 0)
 		// 	break;
 
 		// Exhibit response
@@ -162,14 +172,14 @@ char* cliGetCleanInput(char* input) {
 
 int cliGetCommandFromInput(const char* input) {
 	
-	if (strcmp(input, CMD_NAME[CMD_CODE_KILL]) == 0)
+	if (strcmp(input, CMD_NAMES[CMD_CODE_KILL]) == 0)
 		return CMD_CODE_KILL;
-	if (strcmp(input, CMD_NAME[CMD_CODE_LIST]) == 0)
+	if (strcmp(input, CMD_NAMES[CMD_CODE_LIST]) == 0)
 		return CMD_CODE_LIST;
 
 	// Test for request info command
 	const char aux[] = " [0-9]{1,2}";
-	const int patternSize = strlen(CMD_NAME[CMD_CODE_INFO]);
+	const int patternSize = strlen(CMD_NAMES[CMD_CODE_INFO]);
 	char *infoPattern = (char *)malloc(patternSize + strlen(aux) + 1);
 	const bool isInfoCommand = strRegexMatch(infoPattern, input, NULL);
 	free(infoPattern);
@@ -177,46 +187,54 @@ int cliGetCommandFromInput(const char* input) {
 	return isInfoCommand ? CMD_CODE_INFO : -1;
 }
 
-void cliSendCommand(const int socket, const char* input, char *answer) {
+Message cliSendMessage(const int socket, const Message requestMsg) {
+	
+	cliDebugStep("Sending message...");
+	char buffer[BUF_SIZE] = "";
+    if (!buildMessageToSend(requestMsg, buffer, BUF_SIZE)) {
+        comLogErrorAndDie("[cli] Failure as trying to build message to send");
+    }
+	if (!netSend(socket, buffer)) {
+        comLogErrorAndDie("[cli] Failure as trying to send message");
+	}
 
-	// Send command
-	cliDebugStep("Sending command...");
-	const bool isSuccess = netSend(socket, input);
-	if (!isSuccess)
-		comLogErrorAndDie("Sending command failure");
-
-	// Wait for response
-	cliDebugStep("Waiting server answer...");
+	cliDebugStep("Waiting for server answer...");
+	char answer[BUF_SIZE] = "";
 	ssize_t receivedBytes = netRecv(socket, answer, TIMEOUT_TRANSFER_SECS);
 	if (receivedBytes == -1)
-		comLogErrorAndDie("Failure as trying to receive server answer");
+		comLogErrorAndDie("[cli] Failure as trying to receive server answer");
 
 	if (DEBUG_ENABLE) {
-		char dbgTxt[BUF_SIZE] = "";
-		sprintf(dbgTxt, "Server response received with %lu bytes", receivedBytes);
-		cliDebugStep(dbgTxt);
+		const char auxTemplate[] = "%lu bytes received: '%s'";
+		char *aux = (char *)malloc(strlen(answer) + strlen(auxTemplate) + 1);
+		sprintf(aux, auxTemplate, receivedBytes, answer);
+		cliDebugStep(aux);
+		free(aux);
 	}
+
+	Message responseMsg = getEmptyMessage();
+	setMessageFromText(answer, &responseMsg);
+	if (!responseMsg.isValid) {
+		cliDebugStep("Invalid response received from server...");
+		return responseMsg;
+	}
+	
+	if (responseMsg.id == MSG_ERR) {
+		printf("\n%s\n", ERR_NAMES[*(int *)responseMsg.payload]); // NOTE: This really should be printed
+	}
+	return responseMsg;
 }
 
 int cliRequestToGetIn(const int socket) {
 	
-	// Build
-	Message msg = getEmptyMessage();
-	msg.id = MSG_REQ_ADD;
-	msg.isValid = MSG_REQ_ADD;
-	char input[BUF_SIZE] = "";
-	if (!buildMessageToSend(msg, input, BUF_SIZE)) {
-		cliDebugStep("Failure as trying to build");
+	Message requestMsg = getEmptyMessage();
+	requestMsg.id = MSG_REQ_ADD;
+	
+	Message responseMsg = cliSendMessage(socket, requestMsg);
+	if (!responseMsg.isValid || responseMsg.id != MSG_RES_ADD) {
+		cliDebugStep("Unexpected response for 'aks to get in' request...");
 		return 0;
 	}
 
-	// Send
-	char answerBuffer[BUF_SIZE] = "";
-	cliSendCommand(socket, input, answerBuffer);
-
-	// Receive
-	Message answer = getEmptyMessage();
-	if (isValidReceivedMsg(answerBuffer))
-		setMessageFromText(answerBuffer, &answer);
-	return answer.id;
+	return *(int *)responseMsg.payload;
 }

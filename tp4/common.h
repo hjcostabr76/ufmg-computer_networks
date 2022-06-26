@@ -25,13 +25,15 @@
 #define ASCII_CHAR_UC_LAST 90
 
 #define CMD_COUNT 3
+#define ERR_COUNT 4
 #define PORT_DEFAULT 51511
 
 #define MAX_PAYLOAD_SIZE 1024 - 1 - 2 - 2 // [buffer size] - [id_msg] - [id_src] - [id_target]
 #define MAX_CONNECTIONS 15
 
 extern const char* EQUIP_IDS[MAX_CONNECTIONS];
-extern const char* CMD_NAME[CMD_COUNT];
+extern const char* CMD_NAMES[CMD_COUNT];
+extern const char* ERR_NAMES[ERR_COUNT];
 
 extern const char* NET_TAG_MSG;
 extern const char* NET_TAG_ID;
@@ -97,7 +99,7 @@ typedef struct {
 void comDebugStep(const char *text);
 void comLogErrorAndDie(char *msg);
 char* comDbgBool(bool v);
-void comDebugMessage(const Message msg, const PayloadDescription *payloadDesc);
+void comDebugMessage(const Message msg, PayloadDescription *payloadDesc);
 
 /** -- MAIN ------------- */
 bool isValidReceivedMsg(const char *message);
