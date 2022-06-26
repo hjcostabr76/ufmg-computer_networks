@@ -103,6 +103,7 @@ void comDebugMessage(const Message msg, PayloadDescription *payloadDesc);
 
 /** -- MAIN ------------- */
 bool isValidReceivedMsg(const char *message);
+bool isValidEquipId(const int id);
 void setMessageFromText(const char *text, Message *message);
 bool buildMessageToSend(Message msg, char *buffer, const int bufferSize);
 void parseMessageValidity(Message *message);

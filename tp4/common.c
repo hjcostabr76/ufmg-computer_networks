@@ -60,7 +60,6 @@ bool isFloatTypePayload(const int msgId);
 bool isIntListTypePayload(const int msgId);
 
 bool isValidMessageId(const int id);
-bool isValidEquipId(const int id);
 bool isValidMessageSource(const MessageIdEnum msgId, const int source);
 bool isValidMessageTarget(const Message msg);
 bool isValidMessagePayload(const MessageIdEnum msgId, void *payload);

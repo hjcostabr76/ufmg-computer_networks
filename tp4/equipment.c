@@ -1,10 +1,13 @@
 #include <stdlib.h>
+#include <pthread.h>
 // #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
 #include <unistd.h>
 
 #include "common.h"
+
+typedef struct { int socket; } ThreadData;
 
 /**
  * ------------------------------------------------
@@ -18,13 +21,18 @@ void cliDebugStep(const char* log);
 /* -- Main ------------------- */
 bool cliValidateInitialization(int argc, char **argv);
 void cliExplainAndDie(char **argv);
+void cliThreadDebugStep(const char* log);
 void cliFinishGracefully(const int sock);
 
 char* cliGetCleanInput(char* input);
 int cliGetCommandFromInput(const char* input);
 
-Message cliSendMessage(const int socket, const Message requestMsg);
+void *cliThreadServerListener(void *threadData);
+void cliSendMessage(const int socket, const Message message);
+Message cliReceiveMsg(const int socket);
+
 int cliRequestToGetIn(const int socket);
+void cliAddEquipment(const int newEquipId);
 
 /**
  * ------------------------------------------------
@@ -33,7 +41,6 @@ int cliRequestToGetIn(const int socket);
  */
 
 int myId = 0;
-int nEquipments = 0;
 bool equipments[MAX_CONNECTIONS] = { false };
 
 int main(int argc, char **argv) {
@@ -67,6 +74,11 @@ int main(int argc, char **argv) {
 		cliFinishGracefully(sock);
 	}
 	printf("\nNew ID: %d\n", myId); // NOTE: This really should be printed
+
+	// Start thread to listen to server commands
+	pthread_t threadID;
+	ThreadData threadData = { sock };
+	pthread_create(&threadID, NULL, (void *)cliThreadServerListener, &threadData);
 
 	// Handle terminal commands...
 	while (true) {
@@ -110,6 +122,38 @@ int main(int argc, char **argv) {
 	cliFinishGracefully(sock);
 }
 
+void *cliThreadServerListener(void *threadData) {
+	
+	cliThreadDebugStep("Starting thread to listen to server messages...");
+	ThreadData *client = (ThreadData *)threadData;
+
+	// while (true) {
+		
+		// Receive message
+		cliThreadDebugStep("Waiting for messages...");
+		Message msg = cliReceiveMsg(client->socket);
+		// if (!msg.isValid)
+			// continue;
+
+		// Handle request
+		switch (msg.id) {
+			case MSG_RES_ADD:
+				cliThreadDebugStep("Someone new is getting in...");
+				cliAddEquipment(*(int *)msg.payload);
+				break;
+			default:
+				cliThreadDebugStep("Something wrong isn't right...");
+				break;
+		}
+		
+	// }
+
+    // End thread successfully
+	cliThreadDebugStep("Done!");
+    close(client->socket);
+    pthread_exit(EXIT_SUCCESS);
+}
+
 /**
  * ------------------------------------------------
  * == HELPER ======================================
@@ -126,6 +170,34 @@ void cliDebugStep(const char* log) {
         comDebugStep(aux);
         free(aux);
     }
+}
+
+void cliThreadDebugStep(const char* log) {
+    if (DEBUG_ENABLE) {
+        const char prefix[] = "[cli: thread]";
+        char *aux = (char *)malloc(strlen(log) + strlen(prefix) + 2);
+        sprintf(aux, "%s %s", prefix, log);
+        comDebugStep(aux);
+        free(aux);
+    }
+}
+
+void cliDebugEquipmentsCount() {
+	
+	if (!DEBUG_ENABLE)
+		return;
+	
+	int nEquipments = 0;
+	for (int i = 0; i < MAX_CONNECTIONS; i++) {
+		if (equipments[i])
+			nEquipments++;
+	}
+	
+	const char auxTemplate[] = "Now we have '%d' equipment(s)";
+	char *aux = (char *)malloc(strlen(auxTemplate) + 1);
+	sprintf(aux, auxTemplate, nEquipments);
+	cliDebugStep(aux);
+	free(aux);
 }
 
 /* -- Main ------------------- */
@@ -193,22 +265,13 @@ int cliGetCommandFromInput(const char* input) {
 	return isInfoCommand ? CMD_CODE_INFO : -1;
 }
 
-Message cliSendMessage(const int socket, const Message requestMsg) {
-	
-	cliDebugStep("Sending message...");
-	char buffer[BUF_SIZE] = "";
-    if (!buildMessageToSend(requestMsg, buffer, BUF_SIZE)) {
-        comLogErrorAndDie("[cli] Failure as trying to build message to send");
-    }
-	if (!netSend(socket, buffer)) {
-        comLogErrorAndDie("[cli] Failure as trying to send message");
-	}
+Message cliReceiveMsg(const int socket) {
+    cliDebugStep("Waiting for messages...");
 
-	cliDebugStep("Waiting for server answer...");
 	char answer[BUF_SIZE] = "";
 	ssize_t receivedBytes = netRecv(socket, answer, TIMEOUT_TRANSFER_SECS);
 	if (receivedBytes == -1)
-		comLogErrorAndDie("[cli] Failure as trying to receive server answer");
+		comLogErrorAndDie("[cli] Failure as trying to receive message");
 
 	if (DEBUG_ENABLE) {
 		const char auxTemplate[] = "%lu bytes received: '%s'";
@@ -221,7 +284,7 @@ Message cliSendMessage(const int socket, const Message requestMsg) {
 	Message responseMsg = getEmptyMessage();
 	setMessageFromText(answer, &responseMsg);
 	if (!responseMsg.isValid) {
-		cliDebugStep("Invalid response received from server...");
+		cliDebugStep("Invalid message received...");
 		return responseMsg;
 	}
 	
@@ -231,19 +294,27 @@ Message cliSendMessage(const int socket, const Message requestMsg) {
 	return responseMsg;
 }
 
+void cliSendMessage(const int socket, const Message message) {
+	cliDebugStep("Sending message...");
+	char buffer[BUF_SIZE] = "";
+    if (!buildMessageToSend(message, buffer, BUF_SIZE))
+		comLogErrorAndDie("[cli] Failure as trying to build message to send");
+	if (!netSend(socket, buffer))
+		comLogErrorAndDie("[cli] Failure as trying to send message");
+}
+
 int cliRequestToGetIn(const int socket) {
 
-	// Send	
 	Message requestMsg = getEmptyMessage();
 	requestMsg.id = MSG_REQ_ADD;
-	Message responseMsg = cliSendMessage(socket, requestMsg);
-	
-	// Validate
+	cliSendMessage(socket, requestMsg);
+
+	Message responseMsg = cliReceiveMsg(socket);
 	const bool hasError = responseMsg.id == MSG_ERR;
 	if (hasError)
 		return 0;
 
-	const bool isInvalidAnswer = responseMsg.isValid || responseMsg.id != MSG_RES_ADD;
+	const bool isInvalidAnswer = !responseMsg.isValid || responseMsg.id != MSG_RES_ADD;
 	if (isInvalidAnswer) {
 		cliDebugStep("Unexpected response for 'aks to get in' request...");
 		return 0;
@@ -251,4 +322,10 @@ int cliRequestToGetIn(const int socket) {
 
 	// We're good ;)
 	return *(int *)responseMsg.payload;
+}
+
+void cliAddEquipment(const int newEquipId) {
+	equipments[newEquipId - 1] = true;
+    printf("\nEquipment %d added\n", newEquipId); // NOTE: This really should be printed
+    cliDebugEquipmentsCount();
 }

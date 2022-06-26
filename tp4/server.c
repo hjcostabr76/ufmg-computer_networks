@@ -96,20 +96,15 @@ int main(int argc, char **argv) {
     exit(EXIT_SUCCESS);
 }
 
-/**
- * TODO: 2021-06-07 - ADD Descricao
- */
-void *servThreadClientHandler(void *threadInput) {
-
-    servThreadDebugStep("Starting new thread...");
+void *servThreadClientHandler(void *threadData) {
     
-    // Parse input
-    Equipment *client = (Equipment *)threadInput;
+    servThreadDebugStep("Starting new thread...");
+    Equipment *client = (Equipment *)threadData;
 
+    // Parse input
     if (DEBUG_ENABLE) {
         char clientAddrStr[INET6_ADDRSTRLEN + 1] = "";
         if (netSetSocketAddrString(client->socket, clientAddrStr)) {
-
             const char auxTemplate[] = "Connected to client at %s...";
 			char *aux = (char *)malloc(strlen(clientAddrStr) + strlen(auxTemplate) + 1);
 			sprintf(aux, auxTemplate, clientAddrStr);
@@ -130,7 +125,7 @@ void *servThreadClientHandler(void *threadInput) {
             break;
     
         default:
-            servThreadDebugStep("[thread] Something wrong isn't right...");
+            servThreadDebugStep("Something wrong isn't right...");
             break;
     }
 
