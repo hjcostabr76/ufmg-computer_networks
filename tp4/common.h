@@ -75,8 +75,16 @@ typedef struct {
     int target;
     void *payload;
     char *payloadText;
+    int payloadSize;
     bool isValid;
 } Message;
+
+typedef struct {
+    bool isFloat;
+    bool isInt;
+    bool isIntList;
+    int listLength;
+} PayloadDescription;
 
 /**
  * ------------------------------------------------
@@ -88,11 +96,16 @@ typedef struct {
 
 void comDebugStep(const char *text);
 void comLogErrorAndDie(char *msg);
+char* comDbgBool(bool v);
+void comDebugMessage(const Message msg, const PayloadDescription *payloadDesc);
 
 /** -- MAIN ------------- */
-
 bool isValidReceivedMsg(const char *message);
 void setMessageFromText(const char *text, Message *message);
+bool buildMessageToSend(Message msg, char *buffer, const int bufferSize);
+void parseMessageValidity(Message *message);
+
+Message getEmptyMessage();
 // Equipment getEmptyEquipment(void);
 // Command getGenericCommand(void);
 // Command getEmptyCommand(CmdCodeEnum code);

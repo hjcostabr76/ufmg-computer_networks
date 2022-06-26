@@ -48,13 +48,16 @@ typedef enum { SOCK_ACTION_RD = 10, SOCK_ACTION_WT } SocketActionEnum;
 
 /*-- Main --------------------*/
 void initProtocolMessagesValidator();
-void buildMessageToSend(const Message msg, char *buffer);
+
+bool isIntTypePayload(msgId);
+bool isFloatTypePayload(msgId);
+bool isIntListTypePayload(msgId);
 
 bool isValidMessageId(const int id);
 bool isValidEquipId(const int id);
 bool isValidMessageSource(const MessageIdEnum msgId, const int source);
 bool isValidMessageTarget(const MessageIdEnum msgId, const int target);
-bool isValidMessagePayload(const MessageIdEnum msgId, char *payloadText, void *payload);
+bool isValidMessagePayload(const MessageIdEnum msgId, void *payload);
 
 int getIntTypeMessageField(const char *text, const char* delimiter);
 
@@ -62,6 +65,7 @@ void setMessagePayload(const char *text, const MessageIdEnum msgId, char **paylo
 void setIntTypePayload(const char *payloadText, void **payload);
 void setFloatTypePayload(const char *payloadText, void **payload);
 void setIntListTypePayload(char *payloadText, void **payload);
+char* getIntListTypePayloadAsString(const int payloadList[], const int payloadSize);
 
 /*-- Network -----------------*/
 bool netIsActionAvailable(int socket, const SocketActionEnum action, struct timeval *timeout);
@@ -93,14 +97,66 @@ void comDebugStep(const char *text) {
 		printf("[log] %s\n", text);
 }
 
+char* comDbgBool(bool v) {
+    char* aux = v ? "1" : "0";
+    return aux;
+}
+
+void comDebugMessage(const Message msg, const PayloadDescription *payloadDesc) {
+
+	if (!DEBUG_ENABLE)
+		return;
+    
+    printf("\n\tmessage.isValid: '%s'", comDbgBool(msg.isValid));
+    printf("\n\tmessage.id: '%d'", msg.id);
+    printf("\n\tmessage.source: '%d'", msg.source);
+    printf("\n\tmessage.target: '%d'", msg.target);
+
+    if (msg.payloadText == NULL)
+        printf("\n\tmessage.payloadText: 'NULL'");
+    else
+        printf("\n\tmessage.payloadText: '%s'", msg.payloadText);
+
+    // Print payload
+    if (msg.payload == NULL)
+        printf("\n\tmessage.payload: 'NULL'");
+
+	const bool hasNoDesc = payloadDesc == NULL;
+	if (hasNoDesc) {
+		payloadDesc = (PayloadDescription *)malloc(sizeof(PayloadDescription));
+		payloadDesc->isInt = setIntTypePayload(msg.payloadText, msg.payload);
+		payloadDesc->isFloat = setFloatTypePayload(msg.payloadText, msg.payload);
+		payloadDesc->isIntList = setIntListTypePayload(msg.payloadText, msg.payload);
+	}
+    
+    if (payloadDesc->isFloat)
+        printf("\n\tmessage.payload: '%.2f'", *(float *)msg.payload);
+    if (payloadDesc->isInt)
+        printf("\n\tmessage.payload: '%d'", *(int *)msg.payload);
+    else if (payloadDesc->isIntList)
+        const char *aux = getIntListTypePayloadAsString((int *)msg.payload, msg.payloadSize);
+		printf("\n\tmessage.payload: '%s'", aux);
+    }
+
+	if (hasNoDesc)
+		free(payloadDesc);
+	
+	printf("\n");
+}
+
 /**
  * ------------------------------------------------
  * == MAIN ========================================
  * ------------------------------------------------
  */
 
+Message getEmptyMessage() {
+	Message msg = { 0, 0, 0, NULL, NULL, 0, false };
+	return msg;
+}
+
 bool isProtocolInitialized = false;
-char protocolPattern[150] = "";
+char PROTOCOL_PATTERN[150] = "";
 
 void initProtocolMessagesValidator() {
 
@@ -111,43 +167,130 @@ void initProtocolMessagesValidator() {
     char patternHeader[] = "<id>[0-9]<id><src>[0-9]{1,2}<src><target>[0-9]{1,2}<target>";
     char patternPayload[] = "(<payload>[a-zA-Z][0-9a-zA-Z\\t ]+[a-zA-Z]<payload>)?";
     
-    strcat(protocolPattern, NET_TAG_MSG);
-    strcat(protocolPattern, patternHeader);
-    strcat(protocolPattern, patternPayload);
-    strcat(protocolPattern, NET_TAG_MSG);
+    strcat(PROTOCOL_PATTERN, NET_TAG_MSG);
+    strcat(PROTOCOL_PATTERN, patternHeader);
+    strcat(PROTOCOL_PATTERN, patternPayload);
+    strcat(PROTOCOL_PATTERN, NET_TAG_MSG);
 }
 
 bool isValidReceivedMsg(const char *message) {
     initProtocolMessagesValidator();
-    return strRegexMatch(protocolPattern, message, NULL);
+    return strRegexMatch(PROTOCOL_PATTERN, message, NULL);
 }
 
-void buildMessageToSend(const Message msg, char *buffer) {
-	memset(buffer, 0, BUF_SIZE);
+bool isIntTypePayload(msgId) {
+	return msgId == MSG_RES_ADD || msgId == MSG_ERR || msgId == MSG_OK;
+}
 
-    char aux = '\0';
-	strcat(buffer, NET_TAG_MSG); // Message
+bool isFloatTypePayload(msgId) {
+	return msgId == MSG_RES_INF;
+}
 
-    strcat(buffer, NET_TAG_ID); // Id
-    aux = msg.id + '0';
-    strcat(buffer, &aux);
-	strcat(buffer, NET_TAG_ID); // Id
-	
-	strcat(buffer, NET_TAG_SRC); // Src
-    aux = msg.source + '0';
-    strcat(buffer, &aux);
-	strcat(buffer, NET_TAG_SRC); // Src
-	
-	strcat(buffer, NET_TAG_TARGET); // Target
-    aux = msg.target + '0';
-    strcat(buffer, &aux);
-	strcat(buffer, NET_TAG_TARGET); // Target
-	
-	strcat(buffer, NET_TAG_PAYLOAD); // Payload
-    strcat(buffer, (char *)msg.payload);
-	strcat(buffer, NET_TAG_PAYLOAD); // Payload
+bool isIntListTypePayload(msgId) {
+	return msgId == MSG_RES_LIST;
+}
 
-	strcat(buffer, NET_TAG_MSG); // Message
+bool buildMessageToSend(Message msg, char *buffer, const int bufferSize) {
+	
+	if (buffer == NULL) {
+		comDebugStep("NULL buffer would fuck us, dude! D:");
+		return false;
+	}
+
+	// Validate
+	parseMessageValidity(&msg);
+	comDebugStep("Trying to parse text for message:");
+	comDebugMessage(msg, NULL);
+	if (!msg.isValid)
+		return false;
+    
+	// Open message tag
+	buffer[0] = '\0';
+	strcat(buffer, NET_TAG_MSG);
+
+	// Id
+	char *aux = (char *)malloc(sizeof(bufferSize));
+	aux[0] = '\0';
+
+    strcat(buffer, NET_TAG_ID);
+	strcpy(aux, buffer);
+	sprintf(buffer, "%s%d", aux, msg.id);
+	strcat(buffer, NET_TAG_ID);
+
+	// Src
+	if (msg.source) {
+		strcat(buffer, NET_TAG_SRC);
+		strcpy(aux, buffer);
+		sprintf(buffer, "%s%d", aux, msg.source);
+		strcat(buffer, NET_TAG_SRC);
+	}
+
+	// Target
+	if (msg.target)	 {
+		strcat(buffer, NET_TAG_TARGET);
+		strcpy(aux, buffer);
+		sprintf(buffer, "%s%d", aux, msg.target);
+		strcat(buffer, NET_TAG_TARGET);
+	}
+	
+	// Payload
+	if (msg.payload != NULL) {
+		strcat(buffer, NET_TAG_PAYLOAD);
+
+		if (isIntTypePayload(msg.id)) {
+			strcpy(aux, buffer);
+			sprintf(buffer, "%s%d", aux, *(int *)msg.payload);
+
+		} else if (isFloatTypePayload(msg.id)) {
+			strcpy(aux, buffer);
+			sprintf(buffer, "%s%.2f", aux, *(float *)msg.payload);
+
+		} else if (isIntListTypePayload(msg.id)) {
+			strcpy(aux, buffer);
+			const char *listString = getIntListTypePayloadAsString((int *)msg.payload, msg.payloadSize);
+			sprintf(buffer, "%s%s", aux, listString);
+		}
+		strcat(buffer, NET_TAG_PAYLOAD);
+	}
+
+
+	// We're good ;)
+	strcat(buffer, NET_TAG_MSG); // Close message tag
+	free(aux);
+
+	if (DEBUG_ENABLE) {
+		const char auxTemplate[] = "%ld sized parsed message text: '%s'";
+		const size_t bufferFinalSize = strlen(buffer);
+		char *dbgMessage = malloc(bufferFinalSize + strlen(auxTemplate) + 1);
+		sprintf(dbgMessage, auxTemplate, bufferFinalSize, buffer);
+		comDebugStep(dbgMessage);
+		free(dbgMessage);
+	}
+
+	return true;
+}
+
+char* getIntListTypePayloadAsString(const int payloadList[], const int payloadSize) {
+
+	const size_t length = payloadSize * sizeof(int);
+	const char* result = (char *)malloc(length + 1);
+	const char* aux = (char *)malloc(length + 1);
+
+	result[0] = '\0';
+	aux[0] = '\0';
+
+	for (int i = 0; i < payloadSize; i++) {
+		const int id = atoi(payloadList[i]);
+		if (i == 0)
+			sprintf(result, "%d", id);
+		else {
+			sprintf(result, "%s,%d", aux, id);
+		}
+		strcpy(aux, result);
+	}
+
+	free(aux);
+	return result;
 }
 
 void setMessageFromText(const char *text, Message *message) {
@@ -166,13 +309,14 @@ void setMessageFromText(const char *text, Message *message) {
 	message->source = getIntTypeMessageField(text, NET_TAG_SRC);
 	message->target = getIntTypeMessageField(text, NET_TAG_TARGET);
 	setMessagePayload(text, message->id, &message->payloadText, &message->payload);
-	
+	parseMessageValidity(message);
+}
+
+void parseMessageValidity(Message *message) {
 	const bool isValidId = isValidMessageId(message->id);
 	const bool isValidSource = isValidMessageSource(message->id, message->source);
 	const bool isValidTarget = isValidMessageTarget(message->id, message->target);
-	const bool isValidPayload = isValidMessagePayload(message->id, message->payloadText, message->payload);
-
-
+	const bool isValidPayload = isValidMessagePayload(message->id, message->payload);
 	message->id = isValidId ? message->id : 0;
 	message->source = isValidSource ? message->source : 0;
 	message->target = isValidTarget ? message->target : 0;
@@ -262,13 +406,7 @@ bool isValidMessageTarget(const MessageIdEnum msgId, const int target) {
 	return (shouldHaveTarget && isValidEquipId(target)) || (!shouldHaveTarget && target == 0);
 }
 
-bool isValidMessagePayload(const MessageIdEnum msgId, char *payloadText, void* payload) {
-
-	// Validate coherence
-	bool isPayloadEmpty = payload == NULL || *(float *)payload == 0;
-	bool isPayloadTextEmpty = payloadText == NULL || strlen(payloadText) == 0;
-	if (isPayloadEmpty != isPayloadTextEmpty)
-		return false;
+bool isValidMessagePayload(const MessageIdEnum msgId, void* payload) {
 
 	/**
 	 * Validate fulfilling
@@ -277,19 +415,16 @@ bool isValidMessagePayload(const MessageIdEnum msgId, char *payloadText, void* p
 	const bool isRequiredPayload = msgId == MSG_RES_ADD || msgId == MSG_RES_INF || msgId == MSG_ERR || msgId == MSG_OK;
 	const bool isForbiddenPayload = msgId == MSG_REQ_ADD || msgId == MSG_REQ_RM || msgId == MSG_REQ_INF;
 	
+	bool isPayloadEmpty = payload == NULL || *(float *)payload == 0;
 	bool isValid = (isPayloadEmpty && !isRequiredPayload) || (!isPayloadEmpty && !isForbiddenPayload);
 	if (isPayloadEmpty)
 		return isValid;
 
 	// Validate value by type
-	const bool isIntTypePayload = msgId == MSG_RES_ADD || msgId == MSG_ERR || msgId == MSG_OK;
-	const bool isFloatTypePayload = msgId == MSG_RES_INF;
-	const bool isIntListTypePayload = msgId == MSG_RES_LIST;
-	
-	if (isIntTypePayload || isFloatTypePayload)
+	if (isIntTypePayload(msgId) || isFloatTypePayload(msgId))
 		return *(float *)payload > 0;
 
-	if (!isIntListTypePayload)
+	if (!isIntListTypePayload(msgId))
 		return false;
 
 	int nEquipments = 0;
@@ -437,7 +572,11 @@ int netConnect(const char *portStr, const char *addrStr, const int timeoutSecs, 
 
 bool netSend(const int socket, const char *msg) {
 
-	char buffer[BUF_SIZE + strlen(NET_TAG_MSG)];
+	if (msg == NULL)
+		return false;
+
+	char *buffer = malloc(BUF_SIZE + strlen(NET_TAG_MSG) + 1);
+	buffer[0] = '\0';
 	strcpy(buffer, msg);
 	strcat(buffer, NET_TAG_MSG);
 
@@ -490,6 +629,9 @@ int netAccept(const int servSocket) {
 }
 
 ssize_t netRecv(const int cliSocket, char *buffer, const int timeoutSecs) {
+
+	if (buffer == NULL)
+		return 0;
 
 	struct timeval timeout;
     timeout.tv_sec = timeoutSecs;

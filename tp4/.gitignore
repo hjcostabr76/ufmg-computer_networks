@@ -3,3 +3,5 @@ equipment
 server
 tests
 tests_memcheck
+server_memcheck
+equipment_memcheck

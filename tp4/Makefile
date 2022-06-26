@@ -9,9 +9,14 @@ all: obj_common.o obj_server.o obj_equipment.o
 tests: obj_common.o obj_test_utils.o obj_test_runners.o obj_tests.o
 	$(CC) $(FLAGS) -o tests obj_common.o obj_test_utils.o obj_test_runners.o obj_tests.o
 
+memcheck_equipment: obj_common.o obj_equipment.o
+	$(CC) $(FLAGS_DBG) -o equipment_memcheck obj_common.o obj_equipment.o
+
+memcheck_server: obj_common.o obj_server.o
+	$(CC) $(FLAGS_DBG) -o server_memcheck obj_common.o obj_server.o -lpthread
+
 memcheck_tests: obj_common.o obj_test_utils.o obj_tests.o
-	$(CC) $(FLAGS_DBG) -o tests_memcheck obj_common.o obj_test_utils.o obj_tests.o
-	$(CC) $(FLAGS_DBG) -o equipment obj_common.o obj_equipment.o
+	$(CC) $(FLAGS_DBG) -o tests_memcheck obj_common.o obj_test_utils.o obj_test_runners.o obj_tests.o
 
 #################################################################################
 
