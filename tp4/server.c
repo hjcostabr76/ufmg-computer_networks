@@ -37,6 +37,7 @@ void servDebugStep(const char* log);
 void servThreadDebugStep(const char* log);
 void servExplainAndDie(char **argv);
 void servNotifySendingFailureAndDie(const int clientId);
+void servDebugEquipmentsCount(void);
 
 bool servValidateInput(int argc, char **argv);
 void *servThreadClientHandler(void *data);
@@ -118,7 +119,7 @@ void *servThreadClientHandler(void *threadInput) {
     }
 
     // Receive message
-    servThreadDebugStep("Receiving text length...");
+    servThreadDebugStep("Waiting for messages...");
     Message msg = servReceiveMsg(client->socket);
 
     // Handle request
@@ -159,7 +160,7 @@ void servDebugStep(const char* log) {
 
 void servThreadDebugStep(const char* log) {
     if (DEBUG_ENABLE) {
-        const char prefix[] = "[serv > thread]";
+        const char prefix[] = "[serv: thread]";
         char *aux = (char *)malloc(strlen(log) + strlen(prefix) + 2);
         sprintf(aux, "%s %s", prefix, log);
         comDebugStep(aux);
@@ -179,6 +180,16 @@ void servNotifySendingFailureAndDie(const int clientId) {
     char *aux = (char *)malloc(strlen(auxTemplate) + 1);
     sprintf(aux, auxTemplate, clientId);
     comLogErrorAndDie(aux);
+}
+
+void servDebugEquipmentsCount() {
+    if (DEBUG_ENABLE) {
+        const char auxTemplate[] = "Now we have '%d' equipment(s)";
+        char *aux = (char *)malloc(strlen(auxTemplate) + 1);
+        sprintf(aux, auxTemplate, nEquipments);
+        servDebugStep(aux);
+        free(aux);
+    }
 }
 
 /* -- Main ------------------- */
@@ -266,8 +277,10 @@ void servAddEquipment(const int clientSocket) {
         servDebugStep("Max equipments reached...");
         Message errorMsg = getEmptyMessage();
         errorMsg.id = MSG_ERR;
+        errorMsg.payload = (int *)malloc(sizeof(int));
         *(int *)errorMsg.payload = ERR_MAX_EQUIP;
         servUnicast(errorMsg, newEquipment);
+        return;
     }
 
     // Let it in
@@ -284,6 +297,7 @@ void servAddEquipment(const int clientSocket) {
     
     // Log
     printf("\nEquipment %d added\n", newEquipment.id); // NOTE: This really should be printed
+    servDebugEquipmentsCount();
 }
 
 void serverCloseThreadOnError(const Equipment *client, const char *errMsg) {

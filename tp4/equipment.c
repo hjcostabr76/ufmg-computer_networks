@@ -18,6 +18,8 @@ void cliDebugStep(const char* log);
 /* -- Main ------------------- */
 bool cliValidateInitialization(int argc, char **argv);
 void cliExplainAndDie(char **argv);
+void cliFinishGracefully(const int sock);
+
 char* cliGetCleanInput(char* input);
 int cliGetCommandFromInput(const char* input);
 
@@ -61,8 +63,8 @@ int main(int argc, char **argv) {
 	// Get in the network
 	myId = cliRequestToGetIn(sock);
 	if (!myId) {
-		close(sock);
-		comLogErrorAndDie("Failure as trying to get in the network");
+		cliDebugStep("Failure as trying to get in the network");
+		cliFinishGracefully(sock);
 	}
 	printf("\nNew ID: %d\n", myId); // NOTE: This really should be printed
 
@@ -105,10 +107,7 @@ int main(int argc, char **argv) {
 	};
 
 	// Finish
-	cliDebugStep("Closing connection...");
-	close(sock);
-	cliDebugStep("\n --- THE END --- \n");
-	exit(EXIT_SUCCESS);
+	cliFinishGracefully(sock);
 }
 
 /**
@@ -153,6 +152,13 @@ void cliExplainAndDie(char **argv) {
     printf("Usage: %s <server IP> <server port>\n", argv[0]);
 	printf("Example: %s 127.0.0.1 51511\n", argv[0]);
     exit(EXIT_FAILURE);
+}
+
+void cliFinishGracefully(const int sock) {
+	cliDebugStep("Closing connection...");
+	close(sock);
+	cliDebugStep("\n --- THE END --- \n");
+	exit(EXIT_SUCCESS);
 }
 
 char* cliGetCleanInput(char* input) {
@@ -220,21 +226,29 @@ Message cliSendMessage(const int socket, const Message requestMsg) {
 	}
 	
 	if (responseMsg.id == MSG_ERR) {
-		printf("\n%s\n", ERR_NAMES[*(int *)responseMsg.payload]); // NOTE: This really should be printed
+		printf("\n%s\n", ERR_NAMES[*(int *)responseMsg.payload - 1]); // NOTE: This really should be printed
 	}
 	return responseMsg;
 }
 
 int cliRequestToGetIn(const int socket) {
-	
+
+	// Send	
 	Message requestMsg = getEmptyMessage();
 	requestMsg.id = MSG_REQ_ADD;
-	
 	Message responseMsg = cliSendMessage(socket, requestMsg);
-	if (!responseMsg.isValid || responseMsg.id != MSG_RES_ADD) {
+	
+	// Validate
+	const bool hasError = responseMsg.id == MSG_ERR;
+	if (hasError)
+		return 0;
+
+	const bool isInvalidAnswer = responseMsg.isValid || responseMsg.id != MSG_RES_ADD;
+	if (isInvalidAnswer) {
 		cliDebugStep("Unexpected response for 'aks to get in' request...");
 		return 0;
 	}
 
+	// We're good ;)
 	return *(int *)responseMsg.payload;
 }

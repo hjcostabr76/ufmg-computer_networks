@@ -62,7 +62,7 @@ bool isIntListTypePayload(const int msgId);
 bool isValidMessageId(const int id);
 bool isValidEquipId(const int id);
 bool isValidMessageSource(const MessageIdEnum msgId, const int source);
-bool isValidMessageTarget(const MessageIdEnum msgId, const int target);
+bool isValidMessageTarget(const Message msg);
 bool isValidMessagePayload(const MessageIdEnum msgId, void *payload);
 
 int getIntTypeMessageField(const char *text, const char* delimiter);
@@ -322,7 +322,7 @@ void setMessageFromText(const char *text, Message *message) {
 void parseMessageValidity(Message *message) {
 	const bool isValidId = isValidMessageId(message->id);
 	const bool isValidSource = isValidMessageSource(message->id, message->source);
-	const bool isValidTarget = isValidMessageTarget(message->id, message->target);
+	const bool isValidTarget = isValidMessageTarget(*message);
 	const bool isValidPayload = isValidMessagePayload(message->id, message->payload);
 	message->id = isValidId ? message->id : 0;
 	message->source = isValidSource ? message->source : 0;
@@ -408,9 +408,16 @@ bool isValidMessageSource(const MessageIdEnum msgId, const int source) {
 	return (shouldHaveSource && isValidEquipId(source)) || (!shouldHaveSource && source == 0);
 }
 
-bool isValidMessageTarget(const MessageIdEnum msgId, const int target) {
-	const bool shouldHaveTarget = msgId == MSG_REQ_INF || msgId == MSG_RES_INF || msgId == MSG_ERR || msgId == MSG_OK;
-	return (shouldHaveTarget && isValidEquipId(target)) || (!shouldHaveTarget && target == 0);
+bool isValidMessageTarget(const Message msg) {
+	const bool shouldHaveTarget = (
+		msg.id == MSG_REQ_INF
+		|| msg.id == MSG_RES_INF
+		|| msg.id == MSG_OK
+		|| (msg.id == MSG_ERR && msg.payload == NULL)
+		/* NOTE: Equipments have no ID when they receive 'limit exceeded' message */
+		|| (msg.id == MSG_ERR && msg.payload != NULL && *(int *)msg.payload != ERR_MAX_EQUIP)
+	);
+	return (shouldHaveTarget && isValidEquipId(msg.target)) || (!shouldHaveTarget && msg.target == 0);
 }
 
 bool isValidMessagePayload(const MessageIdEnum msgId, void* payload) {
