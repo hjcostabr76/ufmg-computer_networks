@@ -127,26 +127,21 @@ void *cliThreadServerListener(void *threadData) {
 	cliThreadDebugStep("Starting thread to listen to server messages...");
 	ThreadData *client = (ThreadData *)threadData;
 
-	// while (true) {
+	while (myId) {
 		
 		// Receive message
 		cliThreadDebugStep("Waiting for messages...");
 		Message msg = cliReceiveMsg(client->socket);
-		// if (!msg.isValid)
-			// continue;
+		if (!msg.isValid)
+			continue;
 
 		// Handle request
-		switch (msg.id) {
-			case MSG_RES_ADD:
-				cliThreadDebugStep("Someone new is getting in...");
-				cliAddEquipment(*(int *)msg.payload);
-				break;
-			default:
-				cliThreadDebugStep("Something wrong isn't right...");
-				break;
+		const bool shouldAddNewEquip = msg.id == MSG_RES_ADD && *(int *)msg.payload != myId;
+		if (shouldAddNewEquip) {
+			cliThreadDebugStep("Someone new is getting in...");
+			cliAddEquipment(*(int *)msg.payload);
 		}
-		
-	// }
+	}
 
     // End thread successfully
 	cliThreadDebugStep("Done!");

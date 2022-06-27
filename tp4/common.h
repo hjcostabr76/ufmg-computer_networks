@@ -137,3 +137,4 @@ bool strIsAlphaNumericChar(const char c);
 char** strSplit(const char* source, const char delimiter, const int maxTokens, const int maxLength, int *tokensCount);
 void strSubstring(const char *src, char *dst, size_t start, size_t end);
 bool strSetDelimitedTextBounds(const char* src, const char *delimiter, int *begin, int *end);
+char* strGetStringFromIntList(const int list[], const int listSize);

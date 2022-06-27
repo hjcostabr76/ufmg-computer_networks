@@ -70,7 +70,7 @@ void setMessagePayload(const char *text, const MessageIdEnum msgId, char **paylo
 void setIntTypePayload(const char *payloadText, void **payload);
 void setFloatTypePayload(const char *payloadText, void **payload);
 void setIntListTypePayload(char *payloadText, void **payload);
-char* getIntListTypePayloadAsString(const int payloadList[], const int payloadSize);
+char* strGetStringFromIntList(const int payloadList[], const int payloadSize);
 
 /*-- Network -----------------*/
 bool netIsActionAvailable(int socket, const SocketActionEnum action, struct timeval *timeout);
@@ -140,7 +140,7 @@ void comDebugMessage(const Message msg, PayloadDescription *payloadDesc) {
     if (payloadDesc->isInt)
         printf("\n\tmessage.payload: '%d'", *(int *)msg.payload);
     else if (payloadDesc->isIntList) {
-        const char *aux = getIntListTypePayloadAsString((int *)msg.payload, msg.payloadSize);
+        const char *aux = strGetStringFromIntList((int *)msg.payload, msg.payloadSize);
 		printf("\n\tmessage.payload: '%s'", aux);
     }
 
@@ -253,7 +253,7 @@ bool buildMessageToSend(Message msg, char *buffer, const int bufferSize) {
 
 		} else if (isIntListTypePayload(msg.id)) {
 			strcpy(aux, buffer);
-			const char *listString = getIntListTypePayloadAsString((int *)msg.payload, msg.payloadSize);
+			const char *listString = strGetStringFromIntList((int *)msg.payload, msg.payloadSize);
 			sprintf(buffer, "%s%s", aux, listString);
 		}
 		strcat(buffer, NET_TAG_PAYLOAD);
@@ -274,29 +274,6 @@ bool buildMessageToSend(Message msg, char *buffer, const int bufferSize) {
 	}
 
 	return true;
-}
-
-char* getIntListTypePayloadAsString(const int payloadList[], const int payloadSize) {
-
-	const size_t length = payloadSize * sizeof(int);
-	char* result = (char *)malloc(length + 1);
-	char* aux = (char *)malloc(length + 1);
-
-	result[0] = '\0';
-	aux[0] = '\0';
-
-	for (int i = 0; i < payloadSize; i++) {
-		const int id = payloadList[i];
-		if (i == 0)
-			sprintf(result, "%d", id);
-		else {
-			sprintf(result, "%s,%d", aux, id);
-		}
-		strcpy(aux, result);
-	}
-
-	free(aux);
-	return result;
 }
 
 void setMessageFromText(const char *text, Message *message) {
@@ -936,3 +913,26 @@ bool strRegexMatch(const char* pattern, const char* str, char errorMsg[100]) {
 
 // 	return trimmed;
 // }
+
+char* strGetStringFromIntList(const int list[], const int listSize) {
+
+	const size_t length = listSize * sizeof(int);
+	char* result = (char *)malloc(length + 1);
+	char* aux = (char *)malloc(length + 1);
+
+	result[0] = '\0';
+	aux[0] = '\0';
+
+	for (int i = 0; i < listSize; i++) {
+		const int id = list[i];
+		if (i == 0)
+			sprintf(result, "%d", id);
+		else {
+			sprintf(result, "%s,%d", aux, id);
+		}
+		strcpy(aux, result);
+	}
+
+	free(aux);
+	return result;
+}

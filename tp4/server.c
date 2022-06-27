@@ -22,7 +22,7 @@ typedef struct {
     int id;
 } Equipment;
 
-Equipment getEmptyEquipment() {
+Equipment servGetEmptyEquipment() {
     Equipment client = { 0, 0 };
     return client;
 }
@@ -48,7 +48,7 @@ void servUnicast(Message msg, Equipment client);
 void servBroadcast(Message msg);
 
 void servAddEquipment(const int clientSocket);
-Equipment getEmptyEquipment();
+Equipment servGetEmptyEquipment();
 
 
 /**
@@ -58,7 +58,7 @@ Equipment getEmptyEquipment();
  */
 
 int nEquipments = 0;
-Equipment *equipments[MAX_CONNECTIONS] = { NULL };
+Equipment equipments[MAX_CONNECTIONS] = { {0}, {0} };
 
 int main(int argc, char **argv) {
 
@@ -88,7 +88,7 @@ int main(int argc, char **argv) {
     while (true) {
         int cliSocket = netAccept(servSocket);
         pthread_t threadID;
-        Equipment clientData = getEmptyEquipment();
+        Equipment clientData = servGetEmptyEquipment();
         clientData.socket = cliSocket;
         pthread_create(&threadID, NULL, servThreadClientHandler, &clientData);
     }
@@ -113,20 +113,21 @@ void *servThreadClientHandler(void *threadData) {
         }
     }
 
-    // Receive message
     servThreadDebugStep("Waiting for messages...");
-    Message msg = servReceiveMsg(client->socket);
-
-    // Handle request
-    switch (msg.id) {
-        case MSG_REQ_ADD:
-            servThreadDebugStep("Someone is trying to connect...");
-            servAddEquipment(client->socket);
-            break;
-    
-        default:
-            servThreadDebugStep("Something wrong isn't right...");
-            break;
+    while (true) {
+        
+        // Handle request
+        Message msg = servReceiveMsg(client->socket);
+        switch (msg.id) {
+            case MSG_REQ_ADD:
+                servThreadDebugStep("Someone is trying to connect...");
+                servAddEquipment(client->socket);
+                break;
+        
+            default:
+                servThreadDebugStep("Something wrong isn't right...");
+                break;
+        }
     }
 
     // End thread successfully
@@ -178,13 +179,22 @@ void servNotifySendingFailureAndDie(const int clientId) {
 }
 
 void servDebugEquipmentsCount() {
-    if (DEBUG_ENABLE) {
-        const char auxTemplate[] = "Now we have '%d' equipment(s)";
-        char *aux = (char *)malloc(strlen(auxTemplate) + 1);
-        sprintf(aux, auxTemplate, nEquipments);
-        servDebugStep(aux);
-        free(aux);
+    
+    if (!DEBUG_ENABLE)
+        return;
+    
+    int *eqIds = (int *)malloc(nEquipments * sizeof(int));
+    for (int i = 0; i < nEquipments; i++) {
+        eqIds[i] = equipments[i].id;
     }
+
+    const char *equipListString = strGetStringFromIntList(eqIds, nEquipments);
+    const char auxTemplate[] = "'%d' equipment(s) currently: '%s'";
+    char *aux = (char *)malloc(strlen(auxTemplate) + strlen(equipListString) + 1);
+    sprintf(aux, auxTemplate, nEquipments, equipListString);
+    
+    servDebugStep(aux);
+    free(aux);
 }
 
 /* -- Main ------------------- */
@@ -253,18 +263,16 @@ void servBroadcast(Message msg) {
 
     // Send it to everyone
     for (int i = 0; i < nEquipments; i++) {
-        Equipment *client = equipments[i];
-        if (client == NULL)
-            comLogErrorAndDie("[broadcast] Something wrong isn't right");
-        if (!netSend(client->socket, buffer))
-            servNotifySendingFailureAndDie(client->id);
+        Equipment client = equipments[i];
+        if (!netSend(client.socket, buffer))
+            servNotifySendingFailureAndDie(client.id);
     }
 }
 
 void servAddEquipment(const int clientSocket) {
 
     // Create new equipment
-    Equipment newEquipment = getEmptyEquipment();
+    Equipment newEquipment = servGetEmptyEquipment();
     newEquipment.socket = clientSocket;
 
     // Check if is there any room for it    
@@ -280,7 +288,7 @@ void servAddEquipment(const int clientSocket) {
 
     // Let it in
     newEquipment.id = nEquipments + 1;
-    equipments[nEquipments++] = &newEquipment;
+    equipments[nEquipments++] = newEquipment;
 
     // Let everyone know
     servDebugStep("Sending 'add equipment' response...");
