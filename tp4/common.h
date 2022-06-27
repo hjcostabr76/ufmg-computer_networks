@@ -61,8 +61,6 @@ typedef enum {
     MSG_RES_INF,
     MSG_ERR,
     MSG_OK
-    // MSG_REQ_LIST,
-    // MSG_RES_RM,
 } MessageIdEnum;
 
 /**

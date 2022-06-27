@@ -33,6 +33,7 @@ Message cliReceiveMsg(const int socket);
 
 int cliRequestToGetIn(const int socket);
 void cliAddEquipment(const int newEquipId);
+void cliParseEquipmentsList(const int equipList[], const int nEquipments);
 
 /**
  * ------------------------------------------------
@@ -81,7 +82,7 @@ int main(int argc, char **argv) {
 	pthread_create(&threadID, NULL, (void *)cliThreadServerListener, &threadData);
 
 	// Handle terminal commands...
-	while (true) {
+	while (myId) {
 
 		// Wait for command
 		char inputRaw[BUF_SIZE] = "";
@@ -132,14 +133,25 @@ void *cliThreadServerListener(void *threadData) {
 		// Receive message
 		cliThreadDebugStep("Waiting for messages...");
 		Message msg = cliReceiveMsg(client->socket);
-		if (!msg.isValid)
-			continue;
+		if (!msg.isValid) {
+			myId = 0;
+			break;
+		}
 
 		// Handle request
 		const bool shouldAddNewEquip = msg.id == MSG_RES_ADD && *(int *)msg.payload != myId;
 		if (shouldAddNewEquip) {
 			cliThreadDebugStep("Someone new is getting in...");
 			cliAddEquipment(*(int *)msg.payload);
+			continue;
+		}
+
+		// Handle request
+		const bool shouldListEquipments = msg.id == MSG_RES_LIST;
+		if (shouldListEquipments) {
+			cliThreadDebugStep("Receiving list of current equipments...");
+			cliParseEquipmentsList((int *)msg.payload, msg.payloadSize);
+			continue;
 		}
 	}
 
@@ -183,14 +195,20 @@ void cliDebugEquipmentsCount() {
 		return;
 	
 	int nEquipments = 0;
+	int *eqIds = (int *)malloc(nEquipments * sizeof(int));
+	
 	for (int i = 0; i < MAX_CONNECTIONS; i++) {
-		if (equipments[i])
+		if (equipments[i]) {
+			eqIds[i] = i + 1;
 			nEquipments++;
+		}
 	}
 	
-	const char auxTemplate[] = "Now we have '%d' equipment(s)";
-	char *aux = (char *)malloc(strlen(auxTemplate) + 1);
-	sprintf(aux, auxTemplate, nEquipments);
+	const char *equipListString = strGetStringFromIntList(eqIds, nEquipments);
+	const char auxTemplate[] = "'%d' equipment(s) currently: '%s'";
+    char *aux = (char *)malloc(strlen(auxTemplate) + strlen(equipListString) + 1);
+    sprintf(aux, auxTemplate, nEquipments, equipListString);
+	
 	cliDebugStep(aux);
 	free(aux);
 }
@@ -277,6 +295,9 @@ Message cliReceiveMsg(const int socket) {
 	}
 
 	Message responseMsg = getEmptyMessage();
+	if (!receivedBytes)
+		return responseMsg;
+
 	setMessageFromText(answer, &responseMsg);
 	if (!responseMsg.isValid) {
 		cliDebugStep("Invalid message received...");
@@ -304,23 +325,31 @@ int cliRequestToGetIn(const int socket) {
 	requestMsg.id = MSG_REQ_ADD;
 	cliSendMessage(socket, requestMsg);
 
-	Message responseMsg = cliReceiveMsg(socket);
-	const bool hasError = responseMsg.id == MSG_ERR;
+	Message addResponseMsg = cliReceiveMsg(socket);
+	const bool hasError = addResponseMsg.id == MSG_ERR;
 	if (hasError)
 		return 0;
 
-	const bool isInvalidAnswer = !responseMsg.isValid || responseMsg.id != MSG_RES_ADD;
+	const bool isInvalidAnswer = !addResponseMsg.isValid || addResponseMsg.id != MSG_RES_ADD;
 	if (isInvalidAnswer) {
 		cliDebugStep("Unexpected response for 'aks to get in' request...");
 		return 0;
 	}
 
 	// We're good ;)
-	return *(int *)responseMsg.payload;
+	return *(int *)addResponseMsg.payload;
 }
 
 void cliAddEquipment(const int newEquipId) {
 	equipments[newEquipId - 1] = true;
     printf("\nEquipment %d added\n", newEquipId); // NOTE: This really should be printed
     cliDebugEquipmentsCount();
+}
+
+void cliParseEquipmentsList(const int equipList[], const int length) {
+	for (int i = 0; i < length; i++) {
+		const int id = equipList[i];
+		equipments[id - 1] = true;
+	}
+	cliDebugEquipmentsCount();
 }

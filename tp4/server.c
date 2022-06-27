@@ -178,16 +178,20 @@ void servNotifySendingFailureAndDie(const int clientId) {
     comLogErrorAndDie(aux);
 }
 
+int* getEquipIdList(const Equipment equips[], const int length) {
+    int *eqIds = (int *)malloc(length * sizeof(int));
+    for (int i = 0; i < length; i++) {
+        eqIds[i] = equips[i].id;
+    }
+    return eqIds;
+}
+
 void servDebugEquipmentsCount() {
     
     if (!DEBUG_ENABLE)
         return;
     
-    int *eqIds = (int *)malloc(nEquipments * sizeof(int));
-    for (int i = 0; i < nEquipments; i++) {
-        eqIds[i] = equipments[i].id;
-    }
-
+    int *eqIds = getEquipIdList(equipments, nEquipments);
     const char *equipListString = strGetStringFromIntList(eqIds, nEquipments);
     const char auxTemplate[] = "'%d' equipment(s) currently: '%s'";
     char *aux = (char *)malloc(strlen(auxTemplate) + strlen(equipListString) + 1);
@@ -286,17 +290,35 @@ void servAddEquipment(const int clientSocket) {
         return;
     }
 
+    // Save current equip list
+    const int prevNEquips = nEquipments;
+    const int equipListSize = prevNEquips * sizeof(Equipment);
+    Equipment *prevEquipList = (Equipment *)malloc(equipListSize);
+    memcpy(prevEquipList, equipments, equipListSize);
+
     // Let it in
     newEquipment.id = nEquipments + 1;
     equipments[nEquipments++] = newEquipment;
 
     // Let everyone know
     servDebugStep("Sending 'add equipment' response...");
-    Message msg = getEmptyMessage();
-    msg.id = MSG_RES_ADD;
-    msg.payload = (int *)malloc(sizeof(int));
-    *(int *)msg.payload = newEquipment.id;
-    servBroadcast(msg);
+    Message newEquipMsg = getEmptyMessage();
+    newEquipMsg.id = MSG_RES_ADD;
+    newEquipMsg.payload = (int *)malloc(sizeof(int));
+    *(int *)newEquipMsg.payload = newEquipment.id;
+    servBroadcast(newEquipMsg);
+
+    // Tell the new guy who is in the group
+    if (prevNEquips > 0) {
+        servDebugStep("Sending 'list equipments' response to the new guy...");
+        Message equipListMsg = getEmptyMessage();
+        int *prevEquipIds = getEquipIdList(prevEquipList, prevNEquips);
+        equipListMsg.id = MSG_RES_LIST;
+        equipListMsg.payload = (int *)malloc(prevNEquips);
+        equipListMsg.payload = prevEquipIds;
+        equipListMsg.payloadSize = prevNEquips;
+        servUnicast(equipListMsg, newEquipment);
+    }
     
     // Log
     printf("\nEquipment %d added\n", newEquipment.id); // NOTE: This really should be printed
