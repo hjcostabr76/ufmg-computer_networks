@@ -1,14 +1,14 @@
 #pragma once
 
+#include "common.h"
+#include "test_utils.h"
+
 typedef struct {
     char *title;
     char *messageText;
     Message expectedResult;
     bool isVerbose;
-    bool isPayloadFloat;
-    bool isPayloadInt;
-    bool isPayloadIntList;
-    int payloadListLength;
+    PayloadDescription payloadDesc;
 } ExtractionTest;
 
 TestResult tstMsgPatternValidationBatch(const char **messages, const int nTests, const bool isValidMessage, const char *title);

@@ -40,8 +40,3 @@ void tstDebugStep(const char* msgOrTemplate, const void *param1, const void *par
         printf("%s", msgOrTemplate);
     }
 }
-
-char* tstBool(bool v) {
-    char* aux = v ? "1" : "0";
-    return aux;
-}
