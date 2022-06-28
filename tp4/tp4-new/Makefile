@@ -15,9 +15,6 @@ memcheck_equipment: obj_common.o obj_equipment.o
 memcheck_server: obj_common.o obj_server.o
 	$(CC) $(FLAGS_DBG) -o server_memcheck obj_common.o obj_server.o -lpthread
 
-memcheck_tests: obj_common.o obj_test_utils.o obj_tests.o
-	$(CC) $(FLAGS_DBG) -o tests_memcheck obj_common.o obj_test_utils.o obj_test_runners.o obj_tests.o
-
 #################################################################################
 
 obj_server.o: server.c common.h
@@ -31,16 +28,5 @@ obj_common.o: common.c common.h
 
 #################################################################################
 
-obj_tests.o: tests.c test_utils.h common.h
-	$(CC) $(FLAGS) -c tests.c -o obj_tests.o
-
-obj_test_runners.o: test_utils.c test_utils.h test_runners.c test_runners.h
-	$(CC) $(FLAGS) -c test_runners.c -o obj_test_runners.o
-
-obj_test_utils.o: test_utils.c test_utils.h
-	$(CC) $(FLAGS) -c test_utils.c -o obj_test_utils.o
-
-#################################################################################
-
 clean:
-	rm -rf obj_* server equipment
+	rm -rf obj_* server equipment server_* equipment_*

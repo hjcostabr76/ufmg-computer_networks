@@ -73,18 +73,9 @@ typedef struct {
     MessageIdEnum id;
     int source;
     int target;
-    void *payload;
-    char *payloadText;
-    int payloadSize;
+    char *payload;
     bool isValid;
 } Message;
-
-typedef struct {
-    bool isFloat;
-    bool isInt;
-    bool isIntList;
-    int listLength;
-} PayloadDescription;
 
 /**
  * ------------------------------------------------
@@ -94,23 +85,18 @@ typedef struct {
 
 /** -- DEBUG ------------ */
 
-void comDebugStep(const char *text);
+void comDbgStep(const char *text);
 void comLogErrorAndDie(char *msg);
 char* comDbgBool(bool v);
-void comDebugMessage(const Message msg, PayloadDescription *payloadDesc);
+void comDebugProtocolMessage(const Message msg, PayloadDescription *payloadDesc);
 
 /** -- MAIN ------------- */
-bool isValidReceivedMsg(const char *message);
-bool isValidEquipId(const int id);
+
 void setMessageFromText(const char *text, Message *message);
 bool buildMessageToSend(Message msg, char *buffer, const int bufferSize);
-void parseMessageValidity(Message *message);
-
 Message getEmptyMessage();
-// Equipment getEmptyEquipment(void);
-// Command getGenericCommand(void);
-// Command getEmptyCommand(CmdCodeEnum code);
-// Command getCommand(const char* input);
+int getEquipIdFromIndex(const int i);
+int getEquipIndexFromId(const int id);
 
 /** -- NETWORK ---------- */
 
@@ -129,10 +115,12 @@ bool strReadFromStdIn(char *buffer, size_t buffLength);
 bool strRegexMatch(const char* pattern, const char* str, char errorMsg[100]);
 bool strEndsWith(const char *target, const char *suffix);
 bool strStartsWith(const char *target, const char *prefix);
-bool strIsNumeric(const char *string);
+bool strIsNumeric(const char *string, const bool *isIntOnly);
 bool strIsAlphaNumericChar(const char c);
 // char* strTrim(const char *string);
 char** strSplit(const char* source, const char delimiter, const int maxTokens, const int maxLength, int *tokensCount);
 void strSubstring(const char *src, char *dst, size_t start, size_t end);
 bool strSetDelimitedTextBounds(const char* src, const char *delimiter, int *begin, int *end);
 char* strGetStringFromIntList(const int list[], const int listSize);
+int strGetIntBetweenDelimiter(const char *text, const char* delimiter);
+char* strIntToString(const char *string);

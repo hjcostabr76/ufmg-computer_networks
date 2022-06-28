@@ -174,7 +174,7 @@ void cliDebugStep(const char* log) {
         const char prefix[] = "[cli]";
         char *aux = (char *)malloc(strlen(log) + strlen(prefix) + 2);
         sprintf(aux, "%s %s", prefix, log);
-        comDebugStep(aux);
+        comDbgStep(aux);
         free(aux);
     }
 }
@@ -184,7 +184,7 @@ void cliThreadDebugStep(const char* log) {
         const char prefix[] = "[cli: thread]";
         char *aux = (char *)malloc(strlen(log) + strlen(prefix) + 2);
         sprintf(aux, "%s %s", prefix, log);
-        comDebugStep(aux);
+        comDbgStep(aux);
         free(aux);
     }
 }
@@ -224,7 +224,8 @@ bool cliValidateInitialization(int argc, char **argv) {
 
     // Validate port
 	const char *portStr = argv[2];
-	if (!strIsNumeric(portStr)) {
+	const bool isIntOnly = true;
+	if (!strIsNumeric(portStr, &isIntOnly)) {
 		cliDebugStep("Invalid Port!\n");
 		return false;
 	}

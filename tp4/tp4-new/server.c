@@ -1,4 +1,5 @@
 #include "common.h"
+#include "server_utils.h"
 
 // #include <stdio.h>
 #include <stdlib.h>
@@ -22,33 +23,34 @@ typedef struct {
     int id;
 } Equipment;
 
-Equipment servGetEmptyEquipment() {
-    Equipment client = { 0, 0 };
-    return client;
-}
-
 /**
  * ------------------------------------------------
  * == HEADERS =====================================
  * ------------------------------------------------
  */
 
-void servDebugStep(const char* log);
-void servThreadDebugStep(const char* log);
-void servExplainAndDie(char **argv);
-void servNotifySendingFailureAndDie(const int clientId);
-void servDebugEquipmentsCount(void);
+/* -- Main ----------- */
 
-bool servValidateInput(int argc, char **argv);
-void *servThreadClientHandler(void *data);
-void servThreadCloseOnError(const Equipment *client, const char *errMsg);
+void *servThreadClientHandler(void *threadData);
+void servAddEquipment(const int clientSocket);
+void servSendError(const ErrorCodeEnum error, Equipment equipment);
+
+/* -- Helper --------- */
+
+Equipment servGetEmptyEquipment();
+int* servGetEquipIdList(const Equipment equips[], const int length);
 
 Message servReceiveMsg(const int cliSocket);
 void servUnicast(Message msg, Equipment client);
 void servBroadcast(Message msg);
 
-void servAddEquipment(const int clientSocket);
-Equipment servGetEmptyEquipment();
+/* -- I/O ------------ */
+
+bool servValidateInput(int argc, char **argv);
+void servDebugEquipmentsCount();
+void servNotifySendingFailureAndDie(const int clientId);
+void serverCloseThreadOnError(const Equipment *client, const char *errMsg);
+void servExplainAndDie(char **argv);
 
 
 /**
@@ -98,7 +100,7 @@ int main(int argc, char **argv) {
 
 void *servThreadClientHandler(void *threadData) {
     
-    servThreadDebugStep("Starting new thread...");
+    comDbgStep("Starting new thread...");
     Equipment *client = (Equipment *)threadData;
 
     // Parse input
@@ -108,77 +110,109 @@ void *servThreadClientHandler(void *threadData) {
             const char auxTemplate[] = "Connected to client at %s...";
 			char *aux = (char *)malloc(strlen(clientAddrStr) + strlen(auxTemplate) + 1);
 			sprintf(aux, auxTemplate, clientAddrStr);
-            servThreadDebugStep(aux);
+            comDbgStep(aux);
 			free(aux);
         }
     }
 
-    servThreadDebugStep("Waiting for messages...");
+    comDbgStep("Waiting for messages...");
     while (true) {
         
         // Handle request
         Message msg = servReceiveMsg(client->socket);
+        if (!msg.isValid) {
+            comDbgStep("Invalid message received");
+            continue;
+        }
+
         switch (msg.id) {
             case MSG_REQ_ADD:
-                servThreadDebugStep("Someone is trying to connect...");
+                comDbgStep("Someone is trying to connect...");
                 servAddEquipment(client->socket);
                 break;
         
             default:
-                servThreadDebugStep("Something wrong isn't right...");
+                /**
+                 * TODO: 2022-06-28 - Should we really print this?
+                 */
+                comDbgStep("Something wrong isn't right...");
                 break;
         }
     }
 
     // End thread successfully
-	servThreadDebugStep("Done!");
+	comDbgStep("Done!");
     close(client->socket);
     pthread_exit(EXIT_SUCCESS);
 }
 
+void servAddEquipment(const int clientSocket) {
+
+    // Create new equipment
+    Equipment newEquipment = servGetEmptyEquipment();
+    newEquipment.socket = clientSocket;
+
+    // Check if is there any room for it    
+    if (nEquipments >= MAX_CONNECTIONS) {
+        comDbgStep("Max equipments reached...");
+        servSendError(ERR_MAX_EQUIP, newEquipment);
+        return;
+    }
+
+    // Save current equip list
+    const int prevEquipCount = nEquipments;
+    const int size = prevEquipCount * sizeof(Equipment);
+    Equipment *prevEquipList = (Equipment *)malloc(size);
+    memcpy(prevEquipList, equipments, size);
+
+    // Let the new guy in
+    const i = nEquipments;
+    newEquipment.id = getEquipIdFromIndex(i);
+    equipments[i] = newEquipment;
+    nEquipments++;
+
+    // Let everyone know
+    comDbgStep("Sending 'add equipment' response...");
+    Message newEquipMsg = getEmptyMessage();
+    newEquipMsg.id = MSG_RES_ADD;
+    newEquipMsg.payload = strIntToString(newEquipment.id);
+    servBroadcast(newEquipMsg);
+
+    // Tell the new guy who's already in the group
+    if (prevEquipCount > 0) {
+        comDbgStep("Sending 'list equipments' response to the new guy...");
+        Message listMsg = getEmptyMessage();
+        int *prevEquipIds = servGetEquipIdList(prevEquipList, prevEquipCount);
+        listMsg.id = MSG_RES_LIST;
+        listMsg.payload = strGetStringFromIntList(prevEquipIds);
+        servUnicast(listMsg, newEquipment);
+    }
+    
+    // Log
+    printf("\nEquipment %d added\n", newEquipment.id); // NOTE: This really should be printed
+    servDebugEquipmentsCount();
+}
+
+void servSendError(const ErrorCodeEnum error, Equipment equipment) {
+    Message errorMsg = getEmptyMessage();
+    errorMsg.id = MSG_ERR;
+    errorMsg.target = equipment.id;
+    errorMsg.payload = strIntToString(error);
+    servUnicast(errorMsg, equipment);
+}
+
 /**
  * ------------------------------------------------
- * == AUXILIARY ===================================
+ * == HELPER ======================================
  * ------------------------------------------------
  */
 
-/* -- Debug ------------------ */
-
-void servDebugStep(const char* log) {
-    if (DEBUG_ENABLE) {
-        const char prefix[] = "[serv]";
-        char *aux = (char *)malloc(strlen(log) + strlen(prefix) + 2);
-        sprintf(aux, "%s %s", prefix, log);
-        comDebugStep(aux);
-        free(aux);
-    }
+Equipment servGetEmptyEquipment() {
+    Equipment equipment = { 0, 0 };
+    return equipment;
 }
 
-void servThreadDebugStep(const char* log) {
-    if (DEBUG_ENABLE) {
-        const char prefix[] = "[serv: thread]";
-        char *aux = (char *)malloc(strlen(log) + strlen(prefix) + 2);
-        sprintf(aux, "%s %s", prefix, log);
-        comDebugStep(aux);
-        free(aux);
-    }
-}
-
-void servExplainAndDie(char **argv) {
-    printf("\nInvalid Input\n");
-    printf("Usage: %s [port number]>\n", argv[0]);
-	printf("Example: %s %d\n", argv[0], PORT_DEFAULT);
-    exit(EXIT_FAILURE);
-}
-
-void servNotifySendingFailureAndDie(const int clientId) {
-    const char auxTemplate[] = "[unicast] Failure as sending message to 'equipment %d'";
-    char *aux = (char *)malloc(strlen(auxTemplate) + 1);
-    sprintf(aux, auxTemplate, clientId);
-    comLogErrorAndDie(aux);
-}
-
-int* getEquipIdList(const Equipment equips[], const int length) {
+int* servGetEquipIdList(const Equipment equips[], const int length) {
     int *eqIds = (int *)malloc(length * sizeof(int));
     for (int i = 0; i < length; i++) {
         eqIds[i] = equips[i].id;
@@ -186,43 +220,8 @@ int* getEquipIdList(const Equipment equips[], const int length) {
     return eqIds;
 }
 
-void servDebugEquipmentsCount() {
-    
-    if (!DEBUG_ENABLE)
-        return;
-    
-    int *eqIds = getEquipIdList(equipments, nEquipments);
-    const char *equipListString = strGetStringFromIntList(eqIds, nEquipments);
-    const char auxTemplate[] = "'%d' equipment(s) currently: '%s'";
-    char *aux = (char *)malloc(strlen(auxTemplate) + strlen(equipListString) + 1);
-    sprintf(aux, auxTemplate, nEquipments, equipListString);
-    
-    servDebugStep(aux);
-    free(aux);
-}
-
-/* -- Main ------------------- */
-
-bool servValidateInput(int argc, char **argv) {
-
-	if (argc != 2) {
-        servDebugStep("Invalid argc!\n");
-		return false;
-    }
-
-    // Validate port
-	const char *portStr = argv[1];
-	if (!strIsNumeric(portStr)) {
-		servDebugStep("Invalid Port!\n");
-		return false;
-	}
-
-	return true;
-}
-
 Message servReceiveMsg(const int cliSocket) {
-    
-    servDebugStep("Waiting for messages...");
+    comDbgStep("Waiting for messages...");
 
     char buffer[BUF_SIZE] = "";
     ssize_t receivedBytes = netRecv(cliSocket, buffer, TIMEOUT_TRANSFER_SECS);
@@ -232,21 +231,13 @@ Message servReceiveMsg(const int cliSocket) {
     if (DEBUG_ENABLE) {
         const char auxTemplate[] = "Received buffer: '%s'";
         char *aux = (char *)malloc(strlen(auxTemplate) + strlen(buffer) + 2);
-        sprintf(aux, "Received buffer: '%s'", buffer);
-        servDebugStep(aux);
+        sprintf(aux, auxTemplate, buffer);
+        comDebugStep(aux);
         free(aux);
     }
 
     Message msg = getEmptyMessage();
     setMessageFromText(buffer, &msg);
-
-    if (!msg.isValid) {
-        /**
-         * TODO: 2022-06-26 - Handle this properly
-         */
-        servDebugStep("Invalid message received");
-    }
-
     return msg;
 }
 
@@ -273,56 +264,17 @@ void servBroadcast(Message msg) {
     }
 }
 
-void servAddEquipment(const int clientSocket) {
+/**
+ * ------------------------------------------------
+ * == I/O =========================================
+ * ------------------------------------------------
+ */
 
-    // Create new equipment
-    Equipment newEquipment = servGetEmptyEquipment();
-    newEquipment.socket = clientSocket;
-
-    // Check if is there any room for it    
-    if (nEquipments >= MAX_CONNECTIONS) {
-        servDebugStep("Max equipments reached...");
-        Message errorMsg = getEmptyMessage();
-        errorMsg.id = MSG_ERR;
-        errorMsg.payload = (int *)malloc(sizeof(int));
-        *(int *)errorMsg.payload = ERR_MAX_EQUIP;
-        servUnicast(errorMsg, newEquipment);
-        return;
-    }
-
-    // Save current equip list
-    const int prevNEquips = nEquipments;
-    const int equipListSize = prevNEquips * sizeof(Equipment);
-    Equipment *prevEquipList = (Equipment *)malloc(equipListSize);
-    memcpy(prevEquipList, equipments, equipListSize);
-
-    // Let it in
-    newEquipment.id = nEquipments + 1;
-    equipments[nEquipments++] = newEquipment;
-
-    // Let everyone know
-    servDebugStep("Sending 'add equipment' response...");
-    Message newEquipMsg = getEmptyMessage();
-    newEquipMsg.id = MSG_RES_ADD;
-    newEquipMsg.payload = (int *)malloc(sizeof(int));
-    *(int *)newEquipMsg.payload = newEquipment.id;
-    servBroadcast(newEquipMsg);
-
-    // Tell the new guy who is in the group
-    if (prevNEquips > 0) {
-        servDebugStep("Sending 'list equipments' response to the new guy...");
-        Message equipListMsg = getEmptyMessage();
-        int *prevEquipIds = getEquipIdList(prevEquipList, prevNEquips);
-        equipListMsg.id = MSG_RES_LIST;
-        equipListMsg.payload = (int *)malloc(prevNEquips);
-        equipListMsg.payload = prevEquipIds;
-        equipListMsg.payloadSize = prevNEquips;
-        servUnicast(equipListMsg, newEquipment);
-    }
-    
-    // Log
-    printf("\nEquipment %d added\n", newEquipment.id); // NOTE: This really should be printed
-    servDebugEquipmentsCount();
+void servExplainAndDie(char **argv) {
+    printf("\nInvalid Input\n");
+    printf("Usage: %s [port number]>\n", argv[0]);
+	printf("Example: %s %d\n", argv[0], PORT_DEFAULT);
+    exit(EXIT_FAILURE);
 }
 
 void serverCloseThreadOnError(const Equipment *client, const char *errMsg) {
@@ -330,4 +282,45 @@ void serverCloseThreadOnError(const Equipment *client, const char *errMsg) {
     perror(errMsg);
     puts("\nClosing thread because of failure... :(\n");
     pthread_exit(NULL);
+}
+
+void servNotifySendingFailureAndDie(const int clientId) {
+    const char auxTemplate[] = "[unicast] Failure as sending message to 'equipment %d'";
+    char *aux = (char *)malloc(strlen(auxTemplate) + 1);
+    sprintf(aux, auxTemplate, clientId);
+    comLogErrorAndDie(aux);
+    free(aux);
+}
+
+void servDebugEquipmentsCount() {
+    
+    if (!DEBUG_ENABLE)
+        return;
+    
+    int *eqIds = servGetEquipIdList(equipments, nEquipments);
+    const char *equipListString = strGetStringFromIntList(eqIds, nEquipments);
+    const char auxTemplate[] = "'%d' equipment(s) currently: '%s'";
+    char *aux = (char *)malloc(strlen(auxTemplate) + strlen(equipListString) + 1);
+    sprintf(aux, auxTemplate, nEquipments, equipListString);
+    
+    comDbgStep(aux);
+    free(aux);
+}
+
+bool servValidateInput(int argc, char **argv) {
+
+	if (argc != 2) {
+        comDbgStep("Invalid argc!\n");
+		return false;
+    }
+
+    // Validate port
+	const char *portStr = argv[1];
+    const bool isIntOnly = true;
+	if (!strIsNumeric(portStr, &isIntOnly)) {
+		comDbgStep("Invalid Port!\n");
+		return false;
+	}
+
+	return true;
 }
