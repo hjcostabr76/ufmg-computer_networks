@@ -43,4 +43,4 @@ obj_test_utils.o: test_utils.c test_utils.h
 #################################################################################
 
 clean:
-	rm -rf obj_* server equipment
+	rm -rf obj_* server equipment server_* equipment_*
