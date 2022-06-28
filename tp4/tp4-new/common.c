@@ -273,6 +273,7 @@ bool isValidMessageId(const int id) {
 		|| id == MSG_RES_INF
 		|| id == MSG_ERR
 		|| id == MSG_OK
+		|| id == MSG_REQ_LIST
 	);
 }
 
@@ -281,7 +282,7 @@ bool isValidEquipId(const int id) {
 }
 
 bool isValidMessageSource(const MessageIdEnum msgId, const int source) {
-	const bool shouldHaveSource = msgId == MSG_REQ_RM || msgId == MSG_REQ_INF || msgId == MSG_RES_INF;
+	const bool shouldHaveSource = msgId == MSG_REQ_RM || msgId == MSG_REQ_INF || msgId == MSG_RES_INF || msgId == MSG_REQ_LIST;
 	return (shouldHaveSource && isValidEquipId(source)) || (!shouldHaveSource && source == 0);
 }
 
@@ -290,6 +291,7 @@ bool isValidMessageTarget(const Message msg) {
 		msg.id == MSG_REQ_INF
 		|| msg.id == MSG_RES_INF
 		|| msg.id == MSG_OK
+		|| msg.id == MSG_RES_LIST
 		|| (msg.id == MSG_ERR && msg.payload == NULL)
 		/* NOTE: Equipments have no ID when they receive 'limit exceeded' message */
 		|| (msg.id == MSG_ERR && msg.payload != NULL && *(int *)msg.payload != ERR_MAX_EQUIP)

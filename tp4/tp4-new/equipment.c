@@ -20,11 +20,11 @@ typedef struct { int socket; } ThreadData;
 
 void cliAddEquipment(const int newEquipId);
 void *cliThreadServerListener(void *threadData);
-int cliRequestToGetIn(const int socket);
+void cliRequestToGetIn(const int socket);
 void cliRequestToGetOut(const int socket);
-void cliSetEquipmentList(const int equipList[], const int nEquipments);
-void cliListEquipments();
+void cliRequestEquipmentList(const int socket);
 void cliRequestInfo(const int sock, const int target);
+void cliListEquipments();
 
 /* -- Helper --------- */
 
@@ -77,12 +77,15 @@ int main(int argc, char **argv) {
 	}
 
 	// Get in the network
-	myId = cliRequestToGetIn(sock);
+	cliRequestToGetIn(sock);
 	if (!myId) {
 		comDbgStep("Failure as trying to get in the network");
 		cliFinishGracefully(sock);
 	}
 	printf("\nNew ID: %d\n", myId); // NOTE: This really should be printed
+
+	// Set equipment list
+	cliRequestEquipmentList(sock);
 
 	// Start thread to listen to server commands
 	pthread_t threadID;
@@ -150,7 +153,6 @@ void *cliThreadServerListener(void *threadData) {
 	while (myId) {
 		
 		// Receive message
-		comDbgStep("Waiting for messages...");
 		Message msg = cliReceiveMsg(client->socket);
 		if (!msg.isValid)
 			continue;
@@ -162,13 +164,6 @@ void *cliThreadServerListener(void *threadData) {
 					comDbgStep("Someone new is getting in...");
 					cliAddEquipment(newGuy);
 				}
-				continue;
-			}
-			case MSG_RES_LIST: {
-				comDbgStep("Receiving list of current equipments...");
-				int nIds = 0;
-				int *ids = strGetIntListFromString(msg.payload, &nIds);
-				cliSetEquipmentList(ids, nIds);
 				continue;
 			}
 			default:
@@ -183,21 +178,67 @@ void *cliThreadServerListener(void *threadData) {
     pthread_exit(EXIT_SUCCESS);
 }
 
-int cliRequestToGetIn(const int socket) {
+void cliRequestToGetIn(const int socket) {
 
-	Message requestMsg = getEmptyMessage();
-	requestMsg.id = MSG_REQ_ADD;
-	cliSendMessage(socket, requestMsg);
+	comDbgStep("Asking to get in the network...");
+	
+	Message request = getEmptyMessage();
+	request.id = MSG_REQ_ADD;
+	cliSendMessage(socket, request);
 
-	Message responseMsg = cliReceiveMsg(socket);
-	const bool isSuccess = responseMsg.isValid && responseMsg.id == MSG_RES_ADD;
-	if (isSuccess)
-		return atoi(responseMsg.payload);
+	Message response = cliReceiveMsg(socket);
+	const bool isSuccess = response.isValid && response.id == MSG_RES_ADD;
+	if (isSuccess) {
+		comDbgStep("We're in...");
+		myId = atoi(response.payload);
+		return;
+	}
+
+	if (response.id != MSG_ERR) // Errors should be handled elsewhere
+		comDbgStep("Unexpected response for 'ask to get in' request...");
+}
+
+void cliRequestEquipmentList(const int socket) {
 	
-	if (responseMsg.id != MSG_ERR) // Errors should be handled elsewhere
-		comDbgStep("Unexpected response for 'aks to get in' request...");
+	comDbgStep("Asking for list of current equipments...");
+	Message request = getEmptyMessage();
+	request.id = MSG_REQ_LIST;
+	request.source = myId;
+	cliSendMessage(socket, request);
 	
-	return 0;
+	Message response = cliReceiveMsg(socket);
+	const bool isSuccess = response.isValid && response.id == MSG_RES_LIST;
+	if (!isSuccess) {
+		if (response.id != MSG_ERR) // Errors should be handled elsewhere
+			comDbgStep("Unexpected response for 'equipments list' request...");
+		return;
+	}
+	
+	comDbgStep("Setting list...");
+	
+	nEquipments = 0;
+	int nIds = 0;
+	int *ids = strGetIntListFromString(response.payload, &nIds);
+
+	for (int i = 0; i < MAX_CONNECTIONS; i++) {
+		
+		const int id = getEquipIdFromIndex(i);
+		if (id == myId)
+			continue;
+		
+		bool isFound = false;
+		for (int j = 0; j < nIds; j++) {
+			isFound = id == ids[j];
+			if (isFound)
+				break;
+		}
+
+		equipments[i] = isFound;
+		if (isFound)
+			nEquipments++;
+	}
+	
+	cliDbgEquipments();
 }
 
 void cliRequestToGetOut(const int socket) {
@@ -268,28 +309,6 @@ void cliAddEquipment(const int id) {
 	free(aux);
 }
 
-void cliSetEquipmentList(const int ids[], const int nEquips) {
-
-	nEquipments = 0;
-	for (int i = 0; i < MAX_CONNECTIONS; i++) {
-		
-		const int id = getEquipIdFromIndex(i);
-		bool isFound = false;
-		
-		for (int j = 0; j < nEquips; j++) {
-			isFound = id == getEquipIndexFromId(ids[j]);
-			if (isFound)
-				break;
-		}
-
-		equipments[i] = isFound;
-		if (isFound)
-			nEquipments++;
-	}
-	
-	cliDbgEquipments();
-}
-
 /**
  * ------------------------------------------------
  * == HELPER ======================================
@@ -322,9 +341,8 @@ Message cliReceiveMsg(const int socket) {
 		return msg;
 	}
 	
-	if (msg.id == MSG_ERR) {
+	if (msg.id == MSG_ERR)
 		printf("\n%s\n", ERR_NAMES[*(int *)msg.payload - 1]); // NOTE: This really should be printed
-	}
 	return msg;
 }
 
@@ -418,10 +436,13 @@ char* cliGetEquipListString() {
 	}
 
 	// Make list
+	int j = 0;
 	int *eqIds = (int *)malloc(nEquipments * sizeof(int));
 	for (int i = 0; i < MAX_CONNECTIONS; i++) {
-		if (equipments[i])
-			eqIds[i] = getEquipIdFromIndex(i);
+		if (equipments[i]) {
+			eqIds[j] = getEquipIdFromIndex(i);
+			j++;
+		}
 	}
 
 	char *listString = strGetStringFromIntList(eqIds, nEquipments);

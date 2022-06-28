@@ -33,12 +33,12 @@ typedef struct {
 void *servThreadClientHandler(void *threadData);
 void servAddEquipment(const int clientSocket);
 void servSendError(const ErrorCodeEnum error, Equipment equipment);
-void servSendEquipList(const Equipment list[], const int count, const Equipment target);
+void servSendEquipList(const Equipment target);
 
 /* -- Helper --------- */
 
 Equipment servGetEmptyEquipment();
-int* servGetEquipIdList(const Equipment equips[], const int length);
+int* servGetEquipIdList(void);
 
 Message servReceiveMsg(const int cliSocket);
 void servUnicast(Message msg, Equipment client);
@@ -115,20 +115,23 @@ void *servThreadClientHandler(void *threadData) {
         }
     }
 
-    comDbgStep("Waiting for messages...");
     while (true) {
         
         // Handle request
         Message msg = servReceiveMsg(client->socket);
-        if (!msg.isValid) {
-            comDbgStep("Invalid message received");
+        if (!msg.isValid)
             continue;
-        }
 
         switch (msg.id) {
             case MSG_REQ_ADD:
                 comDbgStep("Someone is trying to connect...");
                 servAddEquipment(client->socket);
+                break;
+            case MSG_REQ_LIST:
+                comDbgStep("Someone is asking for our clients list...");
+                const int i = getEquipIndexFromId(msg.source);
+                const Equipment target = equipments[i];
+                servSendEquipList(target);
                 break;
         
             default:
@@ -178,22 +181,18 @@ void servAddEquipment(const int clientSocket) {
     newEquipMsg.payload = strIntToString(newEquipment.id);
     servBroadcast(newEquipMsg);
 
-    // Tell the new guy who's already in the group
-    if (prevEquipCount > 0) {
-        comDbgStep("Sending 'list equipments' response to the new guy...");
-        servSendEquipList(prevEquipList, prevEquipCount, newEquipment);
-    }
-    
     // Log
     printf("\nEquipment %d added\n", newEquipment.id); // NOTE: This really should be printed
     servDebugEquipmentsCount();
 }
 
-void servSendEquipList(const Equipment list[], const int count, const Equipment target) {
+void servSendEquipList(const Equipment target) {
+    comDbgStep("Sending 'list equipments' response to the new guy...");
+    int *ids = servGetEquipIdList();
     Message msg = getEmptyMessage();
-    int *ids = servGetEquipIdList(list, count);
     msg.id = MSG_RES_LIST;
-    msg.payload = strGetStringFromIntList(ids, count);
+    msg.target = target.id;
+    msg.payload = strGetStringFromIntList(ids, nEquipments);
     servUnicast(msg, target);
 }
 
@@ -216,10 +215,10 @@ Equipment servGetEmptyEquipment() {
     return equipment;
 }
 
-int* servGetEquipIdList(const Equipment equips[], const int length) {
-    int *eqIds = (int *)malloc(length * sizeof(int));
-    for (int i = 0; i < length; i++) {
-        eqIds[i] = equips[i].id;
+int* servGetEquipIdList() {
+    int *eqIds = (int *)malloc(nEquipments * sizeof(int));
+    for (int i = 0; i < nEquipments; i++) {
+        eqIds[i] = equipments[i].id;
     }
     return eqIds;
 }
@@ -240,6 +239,9 @@ Message servReceiveMsg(const int cliSocket) {
     }
 
     Message msg = getEmptyMessage();
+    if (!receivedBytes)
+        return msg;
+
     setMessageFromText(buffer, &msg);
 	if (!msg.isValid) {
 		comDbgStep("Invalid message received...");
@@ -305,7 +307,7 @@ void servDebugEquipmentsCount() {
     if (!DEBUG_ENABLE)
         return;
     
-    int *eqIds = servGetEquipIdList(equipments, nEquipments);
+    int *eqIds = servGetEquipIdList();
     const char *equipListString = strGetStringFromIntList(eqIds, nEquipments);
     const char auxTemplate[] = "'%d' equipment(s) currently: '%s'";
     char *aux = (char *)malloc(strlen(auxTemplate) + strlen(equipListString) + 1);
