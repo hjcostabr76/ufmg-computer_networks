@@ -1,5 +1,4 @@
 #include "common.h"
-#include "server_utils.h"
 
 // #include <stdio.h>
 #include <stdlib.h>
@@ -34,6 +33,7 @@ typedef struct {
 void *servThreadClientHandler(void *threadData);
 void servAddEquipment(const int clientSocket);
 void servSendError(const ErrorCodeEnum error, Equipment equipment);
+void servSendEquipList(const Equipment list[], const int count, const Equipment target);
 
 /* -- Helper --------- */
 
@@ -65,12 +65,12 @@ Equipment equipments[MAX_CONNECTIONS] = { {0}, {0} };
 int main(int argc, char **argv) {
 
 	// Validate initialization command
-	servDebugStep("Validating input...");
+	comDbgStep("Validating input...");
     if (!servValidateInput(argc, argv))
         servExplainAndDie(argv);
 
     // Create socket
-    servDebugStep("Creating server socket...");
+    comDbgStep("Creating server socket...");
     const char *portStr = argv[1];
     const int ipVersion = 4;
     int servSocket = netListen(portStr, TIMEOUT_CONN_SECS, MAX_CONNECTIONS, &ipVersion);
@@ -83,7 +83,7 @@ int main(int argc, char **argv) {
             comLogErrorAndDie(dbgTxt);
         }
         sprintf(dbgTxt, "All set! Server is bound to %s:%s\nWaiting for connections...", boundAddr, portStr);
-        servDebugStep(dbgTxt);
+        comDbgStep(dbgTxt);
     }
 
     // Accept & open thread to handle new client
@@ -100,7 +100,7 @@ int main(int argc, char **argv) {
 
 void *servThreadClientHandler(void *threadData) {
     
-    comDbgStep("Starting new thread...");
+    comDbgStep("Starting thread for a new client...");
     Equipment *client = (Equipment *)threadData;
 
     // Parse input
@@ -166,7 +166,7 @@ void servAddEquipment(const int clientSocket) {
     memcpy(prevEquipList, equipments, size);
 
     // Let the new guy in
-    const i = nEquipments;
+    const int i = nEquipments;
     newEquipment.id = getEquipIdFromIndex(i);
     equipments[i] = newEquipment;
     nEquipments++;
@@ -181,16 +181,20 @@ void servAddEquipment(const int clientSocket) {
     // Tell the new guy who's already in the group
     if (prevEquipCount > 0) {
         comDbgStep("Sending 'list equipments' response to the new guy...");
-        Message listMsg = getEmptyMessage();
-        int *prevEquipIds = servGetEquipIdList(prevEquipList, prevEquipCount);
-        listMsg.id = MSG_RES_LIST;
-        listMsg.payload = strGetStringFromIntList(prevEquipIds);
-        servUnicast(listMsg, newEquipment);
+        servSendEquipList(prevEquipList, prevEquipCount, newEquipment);
     }
     
     // Log
     printf("\nEquipment %d added\n", newEquipment.id); // NOTE: This really should be printed
     servDebugEquipmentsCount();
+}
+
+void servSendEquipList(const Equipment list[], const int count, const Equipment target) {
+    Message msg = getEmptyMessage();
+    int *ids = servGetEquipIdList(list, count);
+    msg.id = MSG_RES_LIST;
+    msg.payload = strGetStringFromIntList(ids, count);
+    servUnicast(msg, target);
 }
 
 void servSendError(const ErrorCodeEnum error, Equipment equipment) {
@@ -221,7 +225,6 @@ int* servGetEquipIdList(const Equipment equips[], const int length) {
 }
 
 Message servReceiveMsg(const int cliSocket) {
-    comDbgStep("Waiting for messages...");
 
     char buffer[BUF_SIZE] = "";
     ssize_t receivedBytes = netRecv(cliSocket, buffer, TIMEOUT_TRANSFER_SECS);
@@ -232,12 +235,17 @@ Message servReceiveMsg(const int cliSocket) {
         const char auxTemplate[] = "Received buffer: '%s'";
         char *aux = (char *)malloc(strlen(auxTemplate) + strlen(buffer) + 2);
         sprintf(aux, auxTemplate, buffer);
-        comDebugStep(aux);
+        comDbgStep(aux);
         free(aux);
     }
 
     Message msg = getEmptyMessage();
     setMessageFromText(buffer, &msg);
+	if (!msg.isValid) {
+		comDbgStep("Invalid message received...");
+		comDebugProtocolMessage(msg);
+	}
+    
     return msg;
 }
 

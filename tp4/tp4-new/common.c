@@ -62,9 +62,9 @@ bool isValidEquipId(const int id);
 bool isValidMessageId(const int id);
 bool isValidMessageSource(const MessageIdEnum msgId, const int source);
 bool isValidMessageTarget(const Message msg);
-bool isValidPayload(const MessageIdEnum msgId, void *payload);
+bool isValidMessagePayload(const MessageIdEnum msgId, const char* payload);
 
-void setMessagePayload(const char *text, const MessageIdEnum msgId, char **payloadText, void **payload);
+char* getMessagePayload(const char *text);
 
 
 /*-- Network -----------------*/
@@ -113,11 +113,9 @@ void comDebugProtocolMessage(const Message msg) {
     printf("\n\tmessage.target: '%d'", msg.target);
 
     if (msg.payload == NULL)
-        printf("\n\tmessage.payload: 'NULL'");
+        printf("\n\tmessage.payload: 'NULL'\n");
     else
-        printf("\n\tmessage.payload: '%s'", msg.payload);
-
-	printf("\n");
+        printf("\n\tmessage.payload: '%s'\n", msg.payload);
 }
 
 /**
@@ -160,8 +158,8 @@ bool buildMessageToSend(Message msg, char *buffer, const int bufferSize) {
 
 	// Validate
 	parseMessageValidity(&msg);
-	comDbgStep("Trying to parse text for message:");
-	comDebugProtocolMessage(msg, NULL);
+	comDbgStep("Building request for message:");
+	comDebugProtocolMessage(msg);
 	if (!msg.isValid)
 		return false;
     
@@ -197,7 +195,8 @@ bool buildMessageToSend(Message msg, char *buffer, const int bufferSize) {
 	// Payload
 	if (msg.payload != NULL && strlen(msg.payload) > 0) {
 		strcat(buffer, NET_TAG_PAYLOAD);
-		sprintf(buffer, "%s%s", aux, listString);
+		strcpy(aux, buffer);
+		sprintf(buffer, "%s%s", aux, msg.payload);
 		strcat(buffer, NET_TAG_PAYLOAD);
 	}
 
@@ -234,29 +233,29 @@ void setMessageFromText(const char *text, Message *message) {
 	message->id = strGetIntBetweenDelimiter(text, NET_TAG_ID);
 	message->source = strGetIntBetweenDelimiter(text, NET_TAG_SRC);
 	message->target = strGetIntBetweenDelimiter(text, NET_TAG_TARGET);
-	setMessagePayload(text, message->payload);
+	message->payload = getMessagePayload(text);
 	parseMessageValidity(message);
 }
 
-void setMessagePayload(const char *text, char *payload) {
+char* getMessagePayload(const char *text) {
 
 	int begin = 0;
     int end = 0;
-
 	bool isEmpty = !strSetDelimitedTextBounds(text, NET_TAG_PAYLOAD, &begin, &end);
-	if (!isEmpty) {
-		payload = (char *)malloc(strlen(text) + 1);
-		payload[0] = '\0';
-		strSubstring(text, payload, begin, end);
-	} else
-		payload = NULL;
+	if (isEmpty)
+		return NULL;
+	
+	char *payload = (char *)malloc(strlen(text) + 1);
+	payload[0] = '\0';
+	strSubstring(text, payload, begin, end);
+	return payload;
 }
 
 void parseMessageValidity(Message *message) {
 	const bool isValidId = isValidMessageId(message->id);
 	const bool isValidSource = isValidMessageSource(message->id, message->source);
 	const bool isValidTarget = isValidMessageTarget(*message);
-	const bool isValidPayload = isValidPayload(message->id, message->payload);
+	const bool isValidPayload = isValidMessagePayload(message->id, message->payload);
 	message->id = isValidId ? message->id : 0;
 	message->source = isValidSource ? message->source : 0;
 	message->target = isValidTarget ? message->target : 0;
@@ -298,7 +297,7 @@ bool isValidMessageTarget(const Message msg) {
 	return (shouldHaveTarget && isValidEquipId(msg.target)) || (!shouldHaveTarget && msg.target == 0);
 }
 
-bool isValidPayload(const MessageIdEnum msgId, char* payload) {
+bool isValidMessagePayload(const MessageIdEnum msgId, const char* payload) {
 
 	/**
 	 * Validate fulfilling
@@ -343,7 +342,8 @@ bool isValidPayload(const MessageIdEnum msgId, char* payload) {
 int netListen(const char *portStr, const int timeoutSecs, const int maxConnections, const int *ipVersion) {
 
 	// Validate params
-	if (!strIsNumeric(portStr))
+	const bool isIntOnly = true;
+	if (!strIsNumeric(portStr, &isIntOnly))
 		comLogErrorAndDie("Invalid listening socket port");
 
 	if (!maxConnections){
@@ -401,7 +401,8 @@ int netListen(const char *portStr, const int timeoutSecs, const int maxConnectio
 int netConnect(const char *portStr, const char *addrStr, const int timeoutSecs, const int *ipVersion) {
 
 	// Validate
-	if (!strIsNumeric(portStr))
+	const bool isIntOnly = true;
+	if (!strIsNumeric(portStr, &isIntOnly))
 		comLogErrorAndDie("invalid connection port");
 
 	// Load address info
@@ -604,8 +605,8 @@ int netGetIpType(const char *ipTypeStr) {
  */
 
 bool strIsNumeric(const char *string, const bool *isIntOnly) {
-	if (isIntOnly !== NULL && isIntOnly)
-		return strRegexMatch("^[0-9]+$", string, NULL)
+	if (isIntOnly != NULL && isIntOnly)
+		return strRegexMatch("^[0-9]+$", string, NULL);
 	return strRegexMatch("^[0-9]+(\\.[0-9]+)?$", string, NULL);
 }
 
@@ -718,13 +719,17 @@ bool strSetDelimitedTextBounds(const char* src, const char *delimiter, int *begi
 
 char** strSplit(const char* source, const char delimiter, const int maxTokens, const int maxLength, int *tokensCount) {
     
+	const bool isCounterNull = tokensCount == NULL;
+	if (isCounterNull)
+    	tokensCount = (int *) malloc(sizeof(int));
     *tokensCount = 0;
-    char** tokens = malloc(maxTokens * sizeof(char*));
+    
+	char** tokens = malloc(maxTokens * sizeof(char*));
 	char *aux = (char *)malloc(strlen(source));
 	strcpy(aux, source);
-
-    char *token = strtok(aux, &delimiter);
-    if (token == NULL)
+	
+	char *token = strtok(aux, &delimiter);
+	if (token == NULL)
         return tokens;
 
     while (token != NULL && *tokensCount < maxTokens) {
@@ -738,6 +743,9 @@ char** strSplit(const char* source, const char delimiter, const int maxTokens, c
         token = strtok(NULL, &delimiter);
     }
 
+    free(aux);
+	if (isCounterNull)
+		free(tokensCount);
     return tokens;
 }
 
@@ -784,7 +792,8 @@ bool strRegexMatch(const char* pattern, const char* str, char errorMsg[100]) {
 // 	return trimmed;
 // }
 
-char* strGetStringFromIntList(const int list[], const size_t length) {
+
+char* strGetStringFromIntList(const int list[], const int length) {
 
 	char* result = (char *)malloc(length + 1);
 	char* aux = (char *)malloc(length + 1);
@@ -812,12 +821,12 @@ int* strGetIntListFromString(const char* string, int *length) {
 	*length = 0;
 
 	bool isEmpty = string == NULL || !strlen(string);
-	if (!isValid)
+	if (isEmpty)
 		return NULL;
 
-	char **strList = strSplit(payloadText, ',', MAX_CONNECTIONS, 2, length);
-	int intList = (int *)malloc(*length);
-	for (int i = 0; i < length; i++)
+	char **strList = strSplit(string, ',', MAX_CONNECTIONS, 2, length);
+	int *intList = (int *)malloc(*length);
+	for (int i = 0; i < *length; i++)
 		intList[i] = atoi(strList[i]);
 	
 	return intList;
@@ -839,11 +848,11 @@ int strGetIntBetweenDelimiter(const char *text, const char* delimiter) {
 	return aux > 0 ? aux : 0;
 }
 
-char* strIntToString(const char *string) {
+char* strIntToString(const int number) {
 	const char bigNumber[] = "999999999999";
-	char temp* = (char *)malloc(strlen(bigNumber) + 1);
-	sprintf(temp, "%d", string);
-	const size = strlen(temp);
+	char *temp = (char *)malloc(strlen(bigNumber) + 1);
+	sprintf(temp, "%d", number);
+	const int size = strlen(temp);
 	char *numeric = (char *)malloc(size + 1);
 	strSubstring(temp, numeric, 0, size);
 	free(temp);

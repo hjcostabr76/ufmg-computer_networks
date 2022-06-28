@@ -88,7 +88,7 @@ typedef struct {
 void comDbgStep(const char *text);
 void comLogErrorAndDie(char *msg);
 char* comDbgBool(bool v);
-void comDebugProtocolMessage(const Message msg, PayloadDescription *payloadDesc);
+void comDebugProtocolMessage(const Message msg);
 
 /** -- MAIN ------------- */
 
@@ -123,4 +123,5 @@ void strSubstring(const char *src, char *dst, size_t start, size_t end);
 bool strSetDelimitedTextBounds(const char* src, const char *delimiter, int *begin, int *end);
 char* strGetStringFromIntList(const int list[], const int listSize);
 int strGetIntBetweenDelimiter(const char *text, const char* delimiter);
-char* strIntToString(const char *string);
+char* strIntToString(const int number);
+int* strGetIntListFromString(const char* string, int *length);
